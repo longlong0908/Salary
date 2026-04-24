@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>薪資管理 Pro</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="薪資管理">
+    
+    <style>
+        :root { --primary: #007AFF; --success: #34C759; --danger: #FF3B30; --bg: #F2F2F7; }
+        body { font-family: -apple-system, sans-serif; margin: 0; padding-bottom: 100px; -webkit-user-select: none; background-color: var(--bg); background-size: cover; background-position: center; background-attachment: fixed; min-height: 100vh; }
+        body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(242, 242, 247, 0.7); z-index: -1; }
+        .header { background: rgba(255,255,255,0.8); backdrop-filter: blur(10px); padding: 60px 20px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 10; }
+        .header h1 { margin: 0; font-size: 22px; }
+        .page { display: none; padding: 15px; }
+        .page.active { display: block; }
+        .card { background: rgba(255,255,255,0.85); backdrop-filter: blur(5px); padding: 18px; border-radius: 14px; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: 0.2s; }
+        .card.selected { border: 2px solid var(--danger); background: rgba(255, 59, 48, 0.1); }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .btn-primary { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; }
+        .btn-ghost { background: none; color: var(--primary); border: none; font-size: 16px; font-weight: bold; }
+        .tab-bar { position: fixed; bottom: 0; width: 100%; height: 85px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); display: flex; border-top: 1px solid rgba(0,0,0,0.1); padding-bottom: 15px; }
+        .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8E8E93; background: none; border: none; font-size: 11px; }
+        .tab-item.active { color: var(--primary); }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-sizing: border-box; background: white; font-size: 16px; }
+        #bg-input { display: none; }
+        #batch-delete-bar { display: none; background: var(--danger); color: white; padding: 15px; text-align: center; position: fixed; top: 0; width: 100%; z-index: 100; font-weight: bold; }
+        .export-btn { background: white; color: #333; border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-top: 10px; width: 100%; font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    </style>
+</head>
+<body>
+
+    <div id="batch-delete-bar">
+        已選取 <span id="sel-count">0</span> 項紀錄
+        <button onclick="cancelBatchDelete()" style="color:white; background:none; border:1px solid white; border-radius:5px; margin-left:10px; padding:4px 8px;">取消</button>
+        <button onclick="confirmBatchDelete()" style="color:white; background:none; border:1px solid white; border-radius:5px; margin-left:10px; padding:4px 8px;">確認刪除</button>
+    </div>
+
+    <div id="page-home" class="page active">
+        <div class="header"><h1>我的工作</h1><div>
+            <button class="btn-ghost" onclick="document.getElementById('bg-input').click()" style="font-size:20px; margin-right:10px;">🖼️</button>
+            <button class="btn-ghost" onclick="addNewJobName()" style="font-size:28px;">＋</button>
+        </div></div>
+        <input type="file" id="bg-input" accept="image/*" onchange="changeBg(this)">
+        <div id="job-list" style="margin-top:10px;"></div>
+    </div>
+
+    <div id="page-edit" class="page">
+        <div class="header"><button class="btn-ghost" onclick="showPage('home')">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
+        <div class="card">
+            <label>日期</label><input type="date" id="work-date">
+            <label>工時</label><input type="number" id="work-hours" step="0.1" inputmode="decimal" placeholder="0.0">
+            <label>時薪</label><input type="number" id="work-rate" inputmode="numeric" placeholder="80">
+            <button id="save-btn" class="btn-primary" onclick="saveRecord()">儲存紀錄</button>
+        </div>
+    </div>
+
+    <div id="page-stats" class="page">
+        <div class="header"><h1>薪資統計</h1><div></div></div>
+        <div class="card">
+            <button class="export-btn" onclick="exportExcel()">📊 匯出 Excel (CSV)</button>
+            <button class="export-btn" onclick="exportNotes()">📝 傳送到備忘錄</button>
+        </div>
+        <div id="stats-summary-list"></div>
+    </div>
+
+    <div id="page-stats-detail" class="page">
+        <div class="header"><button class="btn-ghost" onclick="showPage('stats')">← 返回</button><h1 id="stats-detail-title">明細</h1><div style="width:50px;"></div></div>
+        <div id="stats-detail-list"></div>
+    </div>
+
+    <div class="tab-bar">
+        <button class="tab-item active" id="tab-home" onclick="showPage('home')">🏠<br>主頁</button>
+        <button class="tab-item" id="tab-stats" onclick="showPage('stats')">📊<br>統計</button>
+    </div>
+
+<script>
+    let jobs = JSON.parse(localStorage.getItem('my_jobs_v6') || '[]');
+    let logs = JSON.parse(localStorage.getItem('my_logs_v6') || '[]');
+    let currentJob = "", currentMonth = "", editingIndex = -1, selectedLogIdx = new Set(), longPressTimer;
+
+    // 註冊 Service Worker (離線支援)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(()=>{});
+    }
+
+    function showPage(pageId) {
+        cancelBatchDelete();
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+        document.getElementById('page-' + pageId).classList.add('active');
+        if(document.getElementById('tab-' + pageId)) document.getElementById('tab-' + pageId).classList.add('active');
+        if(pageId === 'home') renderJobs();
+        if(pageId === 'stats') renderMonthlyStats();
+    }
+
+    function loadBg() { const s = localStorage.getItem('user_bg'); if(s) document.body.style.backgroundImage = `url(${s})`; }
+    function changeBg(i) { if(i.files[0]) { const r = new FileReader(); r.onload = e => { localStorage.setItem('user_bg', e.target.result); document.body.style.backgroundImage = `url(${e.target.result})`; }; r.readAsDataURL(i.files[0]); } }
+    function addNewJobName() { let n = prompt("輸入工作名稱:"); if(n) { jobs.push(n.trim()); localStorage.setItem('my_jobs_v6', JSON.stringify(jobs)); renderJobs(); } }
+    function renderJobs() { document.getElementById('job-list').innerHTML = jobs.map(j => `<div class="card flex-between" onclick="clickJob('${j}')"><strong>${j}</strong><span>❯</span></div>`).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>'; }
+    function clickJob(j) { currentJob = j; editingIndex = -1; document.getElementById('edit-title').innerText = "新增: "+j; document.getElementById('work-date').valueAsDate = new Date(); document.getElementById('work-hours').value = ""; showPage('edit'); }
+
+    function saveRecord() {
+        const d = document.getElementById('work-date').value, h = parseFloat(document.getElementById('work-hours').value), r = parseFloat(document.getElementById('work-rate').value);
+        if(!d || isNaN(h) || isNaN(r)) return alert("請輸入正確數值");
+        const rec = { job: currentJob, date: d, hrs: h, rate: r, pay: h*r };
+        if(editingIndex > -1) logs[editingIndex] = rec; else logs.push(rec);
+        localStorage.setItem('my_logs_v6', JSON.stringify(logs));
+        if(editingIndex > -1) showPage('stats'); else { document.getElementById('work-hours').value = ""; alert("儲存成功"); }
+    }
+
+    function renderMonthlyStats() {
+        const list = document.getElementById('stats-summary-list');
+        let monthly = {};
+        logs.forEach(l => {
+            let m = l.date.substring(0, 7);
+            if(!monthly[m]) monthly[m] = { total: 0, jobs: {} };
+            monthly[m].total += l.pay;
+            if(!monthly[m].jobs[l.job]) monthly[m].jobs[l.job] = { hrs: 0, pay: 0 };
+            monthly[m].jobs[l.job].hrs += l.hrs;
+            monthly[m].jobs[l.job].pay += l.pay;
+        });
+        const sorted = Object.keys(monthly).sort().reverse();
+        list.innerHTML = sorted.map(m => `
+            <div class="card">
+                <div class="flex-between" style="border-bottom:1px solid #ddd; padding-bottom:8px; margin-bottom:8px;">
+                    <strong style="font-size:18px;">${m}月 總計</strong>
+                    <strong style="color:var(--primary); font-size:18px;">HK$${monthly[m].total.toFixed(1)}</strong>
+                </div>
+                ${Object.keys(monthly[m].jobs).map(name => `
+                    <div class="list-item" style="padding:10px 0; border-bottom:1px solid #eee; display:flex; justify-content:space-between;" onclick="showJobInMonth('${m}', '${name}')">
+                        <span>${name} <small>(${monthly[m].jobs[name].hrs.toFixed(1)}hr)</small></span>
+                        <span>HK$${monthly[m].jobs[name].pay.toFixed(1)} ❯</span>
+                    </div>
+                `).join('')}
+            </div>
+        `).join('') || '<p style="text-align:center;color:#666;padding:20px;">尚無紀錄</p>';
+    }
+
+    function showJobInMonth(m, j) { currentJob = j; currentMonth = m; document.getElementById('stats-detail-title').innerText = j; renderDetailList(); showPage('stats-detail'); }
+    function renderDetailList() {
+        const list = document.getElementById('stats-detail-list');
+        const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
+        list.innerHTML = filtered.map(l => `
+            <div class="card flex-between ${selectedLogIdx.has(l.idx)?'selected':''}" ontouchstart="startLogPress(${l.idx})" ontouchend="endLogPress()" onclick="handleLogClick(${l.idx})">
+                <div><strong>${l.date}</strong><br><small>${l.hrs}hr x HK$${l.rate}</small></div>
+                <strong>HK$${l.pay.toFixed(1)} ${selectedLogIdx.has(l.idx)?'✅':'✎'}</strong>
+            </div>
+        `).join('');
+    }
+
+    function startLogPress(i) { longPressTimer = setTimeout(() => toggleLog(i), 700); }
+    function endLogPress() { clearTimeout(longPressTimer); }
+    function handleLogClick(i) { if(selectedLogIdx.size > 0) toggleLog(i); else editLog(i); }
+    function toggleLog(i) { if(selectedLogIdx.has(i)) selectedLogIdx.delete(i); else selectedLogIdx.add(i); document.getElementById('batch-delete-bar').style.display = selectedLogIdx.size > 0 ? 'block' : 'none'; document.getElementById('sel-count').innerText = selectedLogIdx.size; renderDetailList(); }
+    function cancelBatchDelete() { selectedLogIdx.clear(); document.getElementById('batch-delete-bar').style.display = 'none'; if(document.getElementById('page-stats-detail').classList.contains('active')) renderDetailList(); }
+    function confirmBatchDelete() { if(confirm(`確定刪除 ${selectedLogIdx.size} 項嗎？`)) { logs = logs.filter((_, i) => !selectedLogIdx.has(i)); localStorage.setItem('my_logs_v6', JSON.stringify(logs)); cancelBatchDelete(); renderMonthlyStats(); renderDetailList(); } }
+    function editLog(i) { editingIndex = i; const l = logs[i]; currentJob = l.job; document.getElementById('edit-title').innerText = "編輯紀錄"; document.getElementById('work-date').value = l.date; document.getElementById('work-hours').value = l.hrs; document.getElementById('work-rate').value = l.rate; showPage('edit'); }
+
+    function getGroupedData() {
+        let grouped = {};
+        logs.forEach(l => {
+            let m = l.date.substring(0, 7);
+            if(!grouped[m]) grouped[m] = {};
+            if(!grouped[m][l.job]) grouped[m][l.job] = [];
+            grouped[m][l.job].push(l);
+        });
+        return grouped;
+    }
+
+    function exportExcel() {
+        if(logs.length === 0) return alert("尚無紀錄");
+        const grouped = getGroupedData();
+        const months = Object.keys(grouped).sort().reverse();
+        let csv = "\ufeff年份/工作/日期,時數,時薪,工資\n";
+        months.forEach(m => {
+            csv += `【 ${m}月紀錄 】,,, \n`; 
+            let mTotalPay = 0;
+            Object.keys(grouped[m]).forEach(job => {
+                csv += `[ 工作: ${job} ],,, \n`; 
+                let jHrs = 0, jPay = 0;
+                grouped[m][job].sort((a,b) => a.date.localeCompare(b.date)).forEach(l => {
+                    csv += `${l.date},${l.hrs},HK$${l.rate},HK$${l.pay.toFixed(1)}\n`;
+                    jHrs += l.hrs; jPay += l.pay;
+                });
+                csv += `=== ${job} 小計 ===,${jHrs.toFixed(1)}hr,,HK$${jPay.toFixed(1)}\n`;
+                csv += ",,, \n"; 
+                mTotalPay += jPay;
+            });
+            csv += `● ${m}月 總薪資,,,HK$${mTotalPay.toFixed(1)}\n`;
+            csv += "----------------------------------------\n\n";
+        });
+        const b = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+        const u = URL.createObjectURL(b);
+        const a = document.createElement("a");
+        a.href = u; a.download = "薪資報表.csv"; a.click();
+    }
+
+    function exportNotes() {
+        if(logs.length === 0) return alert("尚無紀錄");
+        const grouped = getGroupedData();
+        const months = Object.keys(grouped).sort().reverse();
+        let txt = "【 薪資總結報表 】\n\n";
+        months.forEach(m => {
+            txt += `📅 **${m}月紀錄**\n`;
+            let mPay = 0;
+            Object.keys(grouped[m]).forEach(job => {
+                txt += `  ● **工作: ${job}**\n`;
+                let jHrs = 0, jPay = 0;
+                grouped[m][job].sort((a,b) => a.date.localeCompare(b.date)).forEach(l => {
+                    txt += `    - ${l.date.substring(8)}號: ${l.hrs}hr (HK$${l.pay.toFixed(1)})\n`;
+                    jHrs += l.hrs; jPay += l.pay;
+                });
+                txt += `    **${job} 小計: ${jHrs.toFixed(1)}hr / HK$${jPay.toFixed(1)}**\n\n`;
+                mPay += jPay;
+            });
+            txt += `💰 **${m}月總薪資: HK$${mPay.toFixed(1)}**\n`;
+            txt += `====================\n\n`;
+        });
+        if(navigator.share) navigator.share({title:'薪資報表', text: txt}).catch(()=>{});
+    }
+
+    window.oncontextmenu = e => { if(e.target.closest('.card')) e.preventDefault(); };
+    loadBg(); renderJobs();
+</script>
+</body>
+</html>
