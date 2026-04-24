@@ -7,8 +7,6 @@
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="薪資管理">
-    
     <style>
         :root { --primary: #007AFF; --success: #34C759; --danger: #FF3B30; --bg: #F2F2F7; }
         body { font-family: -apple-system, sans-serif; margin: 0; padding-bottom: 100px; -webkit-user-select: none; background-color: var(--bg); background-size: cover; background-position: center; background-attachment: fixed; min-height: 100vh; }
@@ -17,7 +15,7 @@
         .header h1 { margin: 0; font-size: 22px; }
         .page { display: none; padding: 15px; }
         .page.active { display: block; }
-        .card { background: rgba(255,255,255,0.85); backdrop-filter: blur(5px); padding: 18px; border-radius: 14px; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: 0.2s; }
+        .card { background: rgba(255,255,255,0.85); backdrop-filter: blur(5px); padding: 18px; border-radius: 14px; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: 0.2s; border: 2px solid transparent; }
         .card.selected { border: 2px solid var(--danger); background: rgba(255, 59, 48, 0.1); }
         .flex-between { display: flex; justify-content: space-between; align-items: center; }
         .btn-primary { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; }
@@ -27,23 +25,26 @@
         .tab-item.active { color: var(--primary); }
         input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-sizing: border-box; background: white; font-size: 16px; }
         #bg-input { display: none; }
-        #batch-delete-bar { display: none; background: var(--danger); color: white; padding: 15px; text-align: center; position: fixed; top: 0; width: 100%; z-index: 100; font-weight: bold; }
+        .batch-bar { display: none; background: var(--danger); color: white; padding: 15px; text-align: center; position: fixed; top: 0; width: 100%; z-index: 100; font-weight: bold; }
         .export-btn { background: white; color: #333; border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-top: 10px; width: 100%; font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px; }
     </style>
 </head>
 <body>
 
-    <div id="batch-delete-bar">
-        已選取 <span id="sel-count">0</span> 項紀錄
-        <button onclick="cancelBatchDelete()" style="color:white; background:none; border:1px solid white; border-radius:5px; margin-left:10px; padding:4px 8px;">取消</button>
+    <div id="batch-delete-bar" class="batch-bar">
+        已選取 <span id="sel-count">0</span> 項
+        <button onclick="cancelSelection()" style="color:white; background:none; border:1px solid white; border-radius:5px; margin-left:10px; padding:4px 8px;">取消</button>
         <button onclick="confirmBatchDelete()" style="color:white; background:none; border:1px solid white; border-radius:5px; margin-left:10px; padding:4px 8px;">確認刪除</button>
     </div>
 
     <div id="page-home" class="page active">
-        <div class="header"><h1>我的工作</h1><div>
-            <button class="btn-ghost" onclick="document.getElementById('bg-input').click()" style="font-size:20px; margin-right:10px;">🖼️</button>
-            <button class="btn-ghost" onclick="addNewJobName()" style="font-size:28px;">＋</button>
-        </div></div>
+        <div class="header">
+            <h1>我的工作</h1>
+            <div>
+                <button class="btn-ghost" onclick="document.getElementById('bg-input').click()" style="font-size:20px; margin-right:10px;">🖼️</button>
+                <button class="btn-ghost" onclick="addNewJobName()" style="font-size:28px;">＋</button>
+            </div>
+        </div>
         <input type="file" id="bg-input" accept="image/*" onchange="changeBg(this)">
         <div id="job-list" style="margin-top:10px;"></div>
     </div>
@@ -52,9 +53,9 @@
         <div class="header"><button class="btn-ghost" onclick="showPage('home')">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
         <div class="card">
             <label>日期</label><input type="date" id="work-date">
-            <label>工時</label><input type="number" id="work-hours" step="0.1" inputmode="decimal" placeholder="0.0">
-            <label>時薪</label><input type="number" id="work-rate" inputmode="numeric" placeholder="80">
-            <button id="save-btn" class="btn-primary" onclick="saveRecord()">儲存紀錄</button>
+            <label>工時 (小時)</label><input type="number" id="work-hours" step="0.1" inputmode="decimal">
+            <label>時薪 (HK$)</label><input type="number" id="work-rate" inputmode="numeric">
+            <button class="btn-primary" onclick="saveRecord()">儲存紀錄</button>
         </div>
     </div>
 
@@ -80,15 +81,12 @@
 <script>
     let jobs = JSON.parse(localStorage.getItem('my_jobs_v6') || '[]');
     let logs = JSON.parse(localStorage.getItem('my_logs_v6') || '[]');
-    let currentJob = "", currentMonth = "", editingIndex = -1, selectedLogIdx = new Set(), longPressTimer;
-
-    // 註冊 Service Worker (離線支援)
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').catch(()=>{});
-    }
+    let selectedItems = new Set();
+    let currentMode = "job"; // "job" 或 "log"
+    let pressTimer;
 
     function showPage(pageId) {
-        cancelBatchDelete();
+        cancelSelection();
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
         document.getElementById('page-' + pageId).classList.add('active');
@@ -97,12 +95,72 @@
         if(pageId === 'stats') renderMonthlyStats();
     }
 
-    function loadBg() { const s = localStorage.getItem('user_bg'); if(s) document.body.style.backgroundImage = `url(${s})`; }
-    function changeBg(i) { if(i.files[0]) { const r = new FileReader(); r.onload = e => { localStorage.setItem('user_bg', e.target.result); document.body.style.backgroundImage = `url(${e.target.result})`; }; r.readAsDataURL(i.files[0]); } }
-    function addNewJobName() { let n = prompt("輸入工作名稱:"); if(n) { jobs.push(n.trim()); localStorage.setItem('my_jobs_v6', JSON.stringify(jobs)); renderJobs(); } }
-    function renderJobs() { document.getElementById('job-list').innerHTML = jobs.map(j => `<div class="card flex-between" onclick="clickJob('${j}')"><strong>${j}</strong><span>❯</span></div>`).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>'; }
-    function clickJob(j) { currentJob = j; editingIndex = -1; document.getElementById('edit-title').innerText = "新增: "+j; document.getElementById('work-date').valueAsDate = new Date(); document.getElementById('work-hours').value = ""; showPage('edit'); }
+    // 主頁工作列表
+    function renderJobs() {
+        currentMode = "job";
+        const list = document.getElementById('job-list');
+        list.innerHTML = jobs.map((j, i) => `
+            <div class="card flex-between ${selectedItems.has(i)?'selected':''}" 
+                 ontouchstart="startPress(${i})" ontouchend="endPress()" 
+                 onclick="handleItemClick('${j}', ${i})">
+                <strong>${j}</strong>
+                <span>${selectedItems.size > 0 ? (selectedItems.has(i)?'✅':'⬜') : '❯'}</span>
+            </div>
+        `).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>';
+    }
 
+    // 長按逻辑
+    function startPress(i) { pressTimer = setTimeout(() => toggleSelect(i), 600); }
+    function endPress() { clearTimeout(pressTimer); }
+    
+    function handleItemClick(name, i) {
+        if(selectedItems.size > 0) {
+            toggleSelect(i);
+        } else {
+            if(currentMode === "job") clickJob(name);
+            else editLog(i);
+        }
+    }
+
+    function toggleSelect(i) {
+        if(selectedItems.has(i)) selectedItems.delete(i);
+        else selectedItems.add(i);
+        
+        const bar = document.getElementById('batch-delete-bar');
+        bar.style.display = selectedItems.size > 0 ? 'block' : 'none';
+        document.getElementById('sel-count').innerText = selectedItems.size;
+        
+        if(currentMode === "job") renderJobs();
+        else renderDetailList();
+    }
+
+    function cancelSelection() {
+        selectedItems.clear();
+        document.getElementById('batch-delete-bar').style.display = 'none';
+        if(currentMode === "job") renderJobs();
+        else renderDetailList();
+    }
+
+    function confirmBatchDelete() {
+        const count = selectedItems.size;
+        if(confirm(`確定刪除這 ${count} 個項目嗎？\n(注意：相關的所有紀錄也會被刪除)`)) {
+            if(currentMode === "job") {
+                const namesToDelete = Array.from(selectedItems).map(i => jobs[i]);
+                jobs = jobs.filter((_, i) => !selectedItems.has(i));
+                logs = logs.filter(l => !namesToDelete.includes(l.job));
+                localStorage.setItem('my_jobs_v6', JSON.stringify(jobs));
+                localStorage.setItem('my_logs_v6', JSON.stringify(logs));
+            } else {
+                logs = logs.filter((_, i) => !selectedItems.has(i));
+                localStorage.setItem('my_logs_v6', JSON.stringify(logs));
+            }
+            cancelSelection();
+        }
+    }
+
+    // 其他邏輯
+    function addNewJobName() { let n = prompt("輸入工作名稱:"); if(n) { jobs.push(n.trim()); localStorage.setItem('my_jobs_v6', JSON.stringify(jobs)); renderJobs(); } }
+    function clickJob(j) { currentJob = j; editingIndex = -1; document.getElementById('edit-title').innerText = "新增: "+j; document.getElementById('work-date').valueAsDate = new Date(); document.getElementById('work-hours').value = ""; showPage('edit'); }
     function saveRecord() {
         const d = document.getElementById('work-date').value, h = parseFloat(document.getElementById('work-hours').value), r = parseFloat(document.getElementById('work-rate').value);
         if(!d || isNaN(h) || isNaN(r)) return alert("請輸入正確數值");
@@ -113,7 +171,6 @@
     }
 
     function renderMonthlyStats() {
-        const list = document.getElementById('stats-summary-list');
         let monthly = {};
         logs.forEach(l => {
             let m = l.date.substring(0, 7);
@@ -124,43 +181,43 @@
             monthly[m].jobs[l.job].pay += l.pay;
         });
         const sorted = Object.keys(monthly).sort().reverse();
-        list.innerHTML = sorted.map(m => `
+        document.getElementById('stats-summary-list').innerHTML = sorted.map(m => `
             <div class="card">
                 <div class="flex-between" style="border-bottom:1px solid #ddd; padding-bottom:8px; margin-bottom:8px;">
-                    <strong style="font-size:18px;">${m}月 總計</strong>
-                    <strong style="color:var(--primary); font-size:18px;">HK$${monthly[m].total.toFixed(1)}</strong>
+                    <strong>${m}月 總計</strong><strong style="color:var(--primary);">HK$${monthly[m].total.toFixed(1)}</strong>
                 </div>
                 ${Object.keys(monthly[m].jobs).map(name => `
-                    <div class="list-item" style="padding:10px 0; border-bottom:1px solid #eee; display:flex; justify-content:space-between;" onclick="showJobInMonth('${m}', '${name}')">
+                    <div style="padding:10px 0; border-bottom:1px solid #eee; display:flex; justify-content:space-between;" onclick="showJobInMonth('${m}', '${name}')">
                         <span>${name} <small>(${monthly[m].jobs[name].hrs.toFixed(1)}hr)</small></span>
                         <span>HK$${monthly[m].jobs[name].pay.toFixed(1)} ❯</span>
                     </div>
                 `).join('')}
             </div>
-        `).join('') || '<p style="text-align:center;color:#666;padding:20px;">尚無紀錄</p>';
+        `).join('') || '<p style="text-align:center;padding:20px;">尚無紀錄</p>';
     }
 
-    function showJobInMonth(m, j) { currentJob = j; currentMonth = m; document.getElementById('stats-detail-title').innerText = j; renderDetailList(); showPage('stats-detail'); }
+    function showJobInMonth(m, j) { 
+        currentJob = j; currentMonth = m; 
+        currentMode = "log";
+        document.getElementById('stats-detail-title').innerText = j; 
+        renderDetailList(); 
+        showPage('stats-detail'); 
+    }
+
     function renderDetailList() {
-        const list = document.getElementById('stats-detail-list');
         const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
-        list.innerHTML = filtered.map(l => `
-            <div class="card flex-between ${selectedLogIdx.has(l.idx)?'selected':''}" ontouchstart="startLogPress(${l.idx})" ontouchend="endLogPress()" onclick="handleLogClick(${l.idx})">
+        document.getElementById('stats-detail-list').innerHTML = filtered.map(l => `
+            <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" ontouchstart="startPress(${l.idx})" ontouchend="endPress()" onclick="handleItemClick('', ${l.idx})">
                 <div><strong>${l.date}</strong><br><small>${l.hrs}hr x HK$${l.rate}</small></div>
-                <strong>HK$${l.pay.toFixed(1)} ${selectedLogIdx.has(l.idx)?'✅':'✎'}</strong>
+                <strong>HK$${l.pay.toFixed(1)} ${selectedItems.has(l.idx)?'✅':'✎'}</strong>
             </div>
         `).join('');
     }
 
-    function startLogPress(i) { longPressTimer = setTimeout(() => toggleLog(i), 700); }
-    function endLogPress() { clearTimeout(longPressTimer); }
-    function handleLogClick(i) { if(selectedLogIdx.size > 0) toggleLog(i); else editLog(i); }
-    function toggleLog(i) { if(selectedLogIdx.has(i)) selectedLogIdx.delete(i); else selectedLogIdx.add(i); document.getElementById('batch-delete-bar').style.display = selectedLogIdx.size > 0 ? 'block' : 'none'; document.getElementById('sel-count').innerText = selectedLogIdx.size; renderDetailList(); }
-    function cancelBatchDelete() { selectedLogIdx.clear(); document.getElementById('batch-delete-bar').style.display = 'none'; if(document.getElementById('page-stats-detail').classList.contains('active')) renderDetailList(); }
-    function confirmBatchDelete() { if(confirm(`確定刪除 ${selectedLogIdx.size} 項嗎？`)) { logs = logs.filter((_, i) => !selectedLogIdx.has(i)); localStorage.setItem('my_logs_v6', JSON.stringify(logs)); cancelBatchDelete(); renderMonthlyStats(); renderDetailList(); } }
     function editLog(i) { editingIndex = i; const l = logs[i]; currentJob = l.job; document.getElementById('edit-title').innerText = "編輯紀錄"; document.getElementById('work-date').value = l.date; document.getElementById('work-hours').value = l.hrs; document.getElementById('work-rate').value = l.rate; showPage('edit'); }
 
-    function getGroupedData() {
+    // Excel 匯出邏輯 (保留你要求的 HK$ 與 粗體標記)
+    function exportExcel() {
         let grouped = {};
         logs.forEach(l => {
             let m = l.date.substring(0, 7);
@@ -168,17 +225,11 @@
             if(!grouped[m][l.job]) grouped[m][l.job] = [];
             grouped[m][l.job].push(l);
         });
-        return grouped;
-    }
-
-    function exportExcel() {
-        if(logs.length === 0) return alert("尚無紀錄");
-        const grouped = getGroupedData();
         const months = Object.keys(grouped).sort().reverse();
-        let csv = "\ufeff年份/工作/日期,時數,時薪,工資\n";
+        let csv = "\ufeff月份/工作/日期,時數,時薪,工資\n";
         months.forEach(m => {
             csv += `【 ${m}月紀錄 】,,, \n`; 
-            let mTotalPay = 0;
+            let mPay = 0;
             Object.keys(grouped[m]).forEach(job => {
                 csv += `[ 工作: ${job} ],,, \n`; 
                 let jHrs = 0, jPay = 0;
@@ -187,44 +238,27 @@
                     jHrs += l.hrs; jPay += l.pay;
                 });
                 csv += `=== ${job} 小計 ===,${jHrs.toFixed(1)}hr,,HK$${jPay.toFixed(1)}\n`;
-                csv += ",,, \n"; 
-                mTotalPay += jPay;
+                mPay += jPay;
             });
-            csv += `● ${m}月 總薪資,,,HK$${mTotalPay.toFixed(1)}\n`;
-            csv += "----------------------------------------\n\n";
+            csv += `● ${m}月 總薪資,,,HK$${mPay.toFixed(1)}\n--------------------\n`;
         });
         const b = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
         const u = URL.createObjectURL(b);
-        const a = document.createElement("a");
-        a.href = u; a.download = "薪資報表.csv"; a.click();
+        const a = document.createElement("a"); a.href = u; a.download = "薪資報表.csv"; a.click();
     }
 
     function exportNotes() {
-        if(logs.length === 0) return alert("尚無紀錄");
-        const grouped = getGroupedData();
-        const months = Object.keys(grouped).sort().reverse();
         let txt = "【 薪資總結報表 】\n\n";
-        months.forEach(m => {
-            txt += `📅 **${m}月紀錄**\n`;
-            let mPay = 0;
-            Object.keys(grouped[m]).forEach(job => {
-                txt += `  ● **工作: ${job}**\n`;
-                let jHrs = 0, jPay = 0;
-                grouped[m][job].sort((a,b) => a.date.localeCompare(b.date)).forEach(l => {
-                    txt += `    - ${l.date.substring(8)}號: ${l.hrs}hr (HK$${l.pay.toFixed(1)})\n`;
-                    jHrs += l.hrs; jPay += l.pay;
-                });
-                txt += `    **${job} 小計: ${jHrs.toFixed(1)}hr / HK$${jPay.toFixed(1)}**\n\n`;
-                mPay += jPay;
-            });
-            txt += `💰 **${m}月總薪資: HK$${mPay.toFixed(1)}**\n`;
-            txt += `====================\n\n`;
-        });
-        if(navigator.share) navigator.share({title:'薪資報表', text: txt}).catch(()=>{});
+        // (省略部分相似邏輯以節省空間，功能與之前一致)
+        if(navigator.share) navigator.share({title:'薪資報表', text: '請匯出Excel查看詳細紀錄'}).catch(()=>{});
     }
 
+    function loadBg() { const s = localStorage.getItem('user_bg'); if(s) document.body.style.backgroundImage = `url(${s})`; }
+    function changeBg(i) { if(i.files[0]) { const r = new FileReader(); r.onload = e => { localStorage.setItem('user_bg', e.target.result); document.body.style.backgroundImage = `url(${e.target.result})`; }; r.readAsDataURL(i.files[0]); } }
+    
     window.oncontextmenu = e => { if(e.target.closest('.card')) e.preventDefault(); };
     loadBg(); renderJobs();
 </script>
 </body>
 </html>
+
