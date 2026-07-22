@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>薪資管理 Pro</title>
-    <link rel="manifest" href="mysetting.json">
+    <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <style>
@@ -18,15 +18,18 @@
         .card { background: rgba(255,255,255,0.85); backdrop-filter: blur(5px); padding: 18px; border-radius: 14px; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: 0.2s; border: 2px solid transparent; }
         .card.selected { border: 2px solid var(--danger); background: rgba(255, 59, 48, 0.1); }
         .flex-between { display: flex; justify-content: space-between; align-items: center; }
-        .btn-primary { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; }
+        .btn-primary { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; margin-top: 10px; }
         .btn-ghost { background: none; color: var(--primary); border: none; font-size: 16px; font-weight: bold; }
         .tab-bar { position: fixed; bottom: 0; width: 100%; height: 85px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); display: flex; border-top: 1px solid rgba(0,0,0,0.1); padding-bottom: 15px; }
         .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8E8E93; background: none; border: none; font-size: 11px; }
         .tab-item.active { color: var(--primary); }
         input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-sizing: border-box; background: white; font-size: 16px; }
+        input[readonly] { background: #e9e9ee; color: #555; }
         #bg-input { display: none; }
         .batch-bar { display: none; background: var(--danger); color: white; padding: 15px; text-align: center; position: fixed; top: 0; width: 100%; z-index: 100; font-weight: bold; }
         .export-btn { background: white; color: #333; border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-top: 10px; width: 100%; font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .time-group { display: flex; gap: 10px; }
+        .time-group div { flex: 1; }
     </style>
 </head>
 <body>
@@ -53,8 +56,24 @@
         <div class="header"><button class="btn-ghost" onclick="showPage('home')">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
         <div class="card">
             <label>日期</label><input type="date" id="work-date">
-            <label>工時 (小時)</label><input type="number" id="work-hours" step="0.1" inputmode="decimal">
-            <label>時薪 (HK$)</label><input type="number" id="work-rate" inputmode="numeric">
+            
+            <div class="time-group">
+                <div>
+                    <label>開始時間 (24H)</label>
+                    <input type="time" id="time-start" onchange="autoCalculateHours()">
+                </div>
+                <div>
+                    <label>結束時間 (24H)</label>
+                    <input type="time" id="time-end" onchange="autoCalculateHours()">
+                </div>
+            </div>
+
+            <label>總工時 (自動計算)</label>
+            <input type="number" id="work-hours" step="0.01" readonly placeholder="請選擇上下班時間">
+            
+            <label>時薪 (HK$)</label>
+            <input type="number" id="work-rate" inputmode="numeric">
+            
             <button class="btn-primary" onclick="saveRecord()">儲存紀錄</button>
         </div>
     </div>
@@ -82,8 +101,11 @@
     let jobs = JSON.parse(localStorage.getItem('my_jobs_v6') || '[]');
     let logs = JSON.parse(localStorage.getItem('my_logs_v6') || '[]');
     let selectedItems = new Set();
-    let currentMode = "job"; // "job" 或 "log"
+    let currentMode = "job"; 
     let pressTimer;
+    let currentJob = "";
+    let currentMonth = "";
+    let editingIndex = -1;
 
     function showPage(pageId) {
         cancelSelection();
@@ -93,6 +115,29 @@
         if(document.getElementById('tab-' + pageId)) document.getElementById('tab-' + pageId).classList.add('active');
         if(pageId === 'home') renderJobs();
         if(pageId === 'stats') renderMonthlyStats();
+    }
+
+    // 自動計算時間差（唯讀模式）
+    function autoCalculateHours() {
+        const startVal = document.getElementById('time-start').value;
+        const endVal = document.getElementById('time-end').value;
+        
+        if (startVal && endVal) {
+            const start = new Date(`1970-01-01T${startVal}:00`);
+            let end = new Date(`1970-01-01T${endVal}:00`);
+            
+            // 如果結束時間早於或等於開始時間，算作跨夜（第二天）
+            if (end <= start) {
+                end.setDate(end.getDate() + 1);
+            }
+            
+            const diffMs = end - start;
+            const diffHrs = diffMs / (1000 * 60 * 60);
+            
+            document.getElementById('work-hours').value = diffHrs.toFixed(2);
+        } else {
+            document.getElementById('work-hours').value = "";
+        }
     }
 
     // 主頁工作列表
@@ -109,7 +154,7 @@
         `).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>';
     }
 
-    // 長按逻辑
+    // 長按邏輯
     function startPress(i) { pressTimer = setTimeout(() => toggleSelect(i), 600); }
     function endPress() { clearTimeout(pressTimer); }
     
@@ -158,16 +203,33 @@
         }
     }
 
-    // 其他邏輯
     function addNewJobName() { let n = prompt("輸入工作名稱:"); if(n) { jobs.push(n.trim()); localStorage.setItem('my_jobs_v6', JSON.stringify(jobs)); renderJobs(); } }
-    function clickJob(j) { currentJob = j; editingIndex = -1; document.getElementById('edit-title').innerText = "新增: "+j; document.getElementById('work-date').valueAsDate = new Date(); document.getElementById('work-hours').value = ""; showPage('edit'); }
+    
+    function clickJob(j) { 
+        currentJob = j; 
+        editingIndex = -1; 
+        document.getElementById('edit-title').innerText = "新增: "+j; 
+        document.getElementById('work-date').valueAsDate = new Date(); 
+        document.getElementById('time-start').value = "";
+        document.getElementById('time-end').value = "";
+        document.getElementById('work-hours').value = ""; 
+        showPage('edit'); 
+    }
+
     function saveRecord() {
-        const d = document.getElementById('work-date').value, h = parseFloat(document.getElementById('work-hours').value), r = parseFloat(document.getElementById('work-rate').value);
-        if(!d || isNaN(h) || isNaN(r)) return alert("請輸入正確數值");
-        const rec = { job: currentJob, date: d, hrs: h, rate: r, pay: h*r };
+        const d = document.getElementById('work-date').value;
+        const h = parseFloat(document.getElementById('work-hours').value);
+        const r = parseFloat(document.getElementById('work-rate').value);
+        const tStart = document.getElementById('time-start').value;
+        const tEnd = document.getElementById('time-end').value;
+
+        if(!d || isNaN(h) || isNaN(r)) return alert("請先選擇「開始時間」與「結束時間」，並輸入「時薪」");
+        
+        const rec = { job: currentJob, date: d, hrs: h, rate: r, pay: h*r, tStart: tStart, tEnd: tEnd };
+        
         if(editingIndex > -1) logs[editingIndex] = rec; else logs.push(rec);
         localStorage.setItem('my_logs_v6', JSON.stringify(logs));
-        if(editingIndex > -1) showPage('stats'); else { document.getElementById('work-hours').value = ""; alert("儲存成功"); }
+        if(editingIndex > -1) showPage('stats'); else { document.getElementById('work-hours').value = ""; document.getElementById('time-start').value = ""; document.getElementById('time-end').value = ""; alert("儲存成功"); }
     }
 
     function renderMonthlyStats() {
@@ -208,15 +270,28 @@
         const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
         document.getElementById('stats-detail-list').innerHTML = filtered.map(l => `
             <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" ontouchstart="startPress(${l.idx})" ontouchend="endPress()" onclick="handleItemClick('', ${l.idx})">
-                <div><strong>${l.date}</strong><br><small>${l.hrs}hr x HK$${l.rate}</small></div>
+                <div>
+                    <strong>${l.date}</strong> ${l.tStart && l.tEnd ? `<small style="color:#666;">(${l.tStart}-${l.tEnd})</small>` : ''}<br>
+                    <small>${l.hrs}hr x HK$${l.rate}</small>
+                </div>
                 <strong>HK$${l.pay.toFixed(1)} ${selectedItems.has(l.idx)?'✅':'✎'}</strong>
             </div>
         `).join('');
     }
 
-    function editLog(i) { editingIndex = i; const l = logs[i]; currentJob = l.job; document.getElementById('edit-title').innerText = "編輯紀錄"; document.getElementById('work-date').value = l.date; document.getElementById('work-hours').value = l.hrs; document.getElementById('work-rate').value = l.rate; showPage('edit'); }
+    function editLog(i) { 
+        editingIndex = i; 
+        const l = logs[i]; 
+        currentJob = l.job; 
+        document.getElementById('edit-title').innerText = "編輯紀錄"; 
+        document.getElementById('work-date').value = l.date; 
+        document.getElementById('time-start').value = l.tStart || "";
+        document.getElementById('time-end').value = l.tEnd || "";
+        document.getElementById('work-hours').value = l.hrs; 
+        document.getElementById('work-rate').value = l.rate; 
+        showPage('edit'); 
+    }
 
-    // Excel 匯出邏輯 (保留你要求的 HK$ 與 粗體標記)
     function exportExcel() {
         let grouped = {};
         logs.forEach(l => {
@@ -226,21 +301,22 @@
             grouped[m][l.job].push(l);
         });
         const months = Object.keys(grouped).sort().reverse();
-        let csv = "\ufeff月份/工作/日期,時數,時薪,工資\n";
+        let csv = "\ufeff月份/工作/日期,時間,時數,時薪,工資\n";
         months.forEach(m => {
-            csv += `【 ${m}月紀錄 】,,, \n`; 
+            csv += `【 ${m}月紀錄 】,,,, \n`; 
             let mPay = 0;
             Object.keys(grouped[m]).forEach(job => {
-                csv += `[ 工作: ${job} ],,, \n`; 
+                csv += `[ 工作: ${job} ],,,, \n`; 
                 let jHrs = 0, jPay = 0;
                 grouped[m][job].sort((a,b) => a.date.localeCompare(b.date)).forEach(l => {
-                    csv += `${l.date},${l.hrs},HK$${l.rate},HK$${l.pay.toFixed(1)}\n`;
+                    let timeStr = (l.tStart && l.tEnd) ? `${l.tStart}-${l.tEnd}` : "-";
+                    csv += `${l.date},${timeStr},${l.hrs},HK$${l.rate},HK$${l.pay.toFixed(1)}\n`;
                     jHrs += l.hrs; jPay += l.pay;
                 });
-                csv += `=== ${job} 小計 ===,${jHrs.toFixed(1)}hr,,HK$${jPay.toFixed(1)}\n`;
+                csv += `=== ${job} 小計 ===,,${jHrs.toFixed(1)}hr,,HK$${jPay.toFixed(1)}\n`;
                 mPay += jPay;
             });
-            csv += `● ${m}月 總薪資,,,HK$${mPay.toFixed(1)}\n--------------------\n`;
+            csv += `● ${m}月 總薪資,,,,HK$${mPay.toFixed(1)}\n--------------------\n`;
         });
         const b = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
         const u = URL.createObjectURL(b);
@@ -248,8 +324,6 @@
     }
 
     function exportNotes() {
-        let txt = "【 薪資總結報表 】\n\n";
-        // (省略部分相似邏輯以節省空間，功能與之前一致)
         if(navigator.share) navigator.share({title:'薪資報表', text: '請匯出Excel查看詳細紀錄'}).catch(()=>{});
     }
 
@@ -261,4 +335,3 @@
 </script>
 </body>
 </html>
-
