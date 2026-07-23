@@ -34,6 +34,7 @@
 </head>
 <body>
 
+    <!-- 頂部即時計算/刪除列 -->
     <div id="batch-delete-bar" class="batch-bar">
         <div class="flex-between">
             <div style="text-align: left;">
@@ -47,6 +48,7 @@
         </div>
     </div>
 
+    <!-- 主頁 -->
     <div id="page-home" class="page active">
         <div class="header">
             <h1>我的工作</h1>
@@ -59,6 +61,7 @@
         <div id="job-list" style="margin-top:10px;"></div>
     </div>
 
+    <!-- 編輯/新增頁面 -->
     <div id="page-edit" class="page">
         <div class="header"><button class="btn-ghost" onclick="closeEditPage()">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
         <div class="card">
@@ -85,6 +88,7 @@
         </div>
     </div>
 
+    <!-- 統計頁面 -->
     <div id="page-stats" class="page">
         <div class="header"><h1>薪資統計</h1><div></div></div>
         <div class="card">
@@ -94,6 +98,7 @@
         <div id="stats-summary-list"></div>
     </div>
 
+    <!-- 明細頁面 -->
     <div id="page-stats-detail" class="page">
         <div class="header"><button class="btn-ghost" onclick="showPage('stats')">← 返回</button><h1 id="stats-detail-title">明細</h1><div style="width:50px;"></div></div>
         <div id="stats-detail-list"></div>
@@ -112,8 +117,12 @@
     let currentJob = "";
     let currentMonth = "";
     let editingIndex = -1;
+    
+    // 滑動防誤觸控制變數
     let pressTimer = null;
     let isLongPress = false;
+    let startX = 0, startY = 0;
+    let isScrolling = false;
 
     function showPage(pageId) {
         cancelSelection();
@@ -146,35 +155,80 @@
         const list = document.getElementById('job-list');
         list.innerHTML = jobs.map((j, i) => `
             <div class="card flex-between ${selectedItems.has(i)?'selected':''}" 
-                 ontouchstart="startJobPress(${i})" ontouchend="endJobPress('${j}', ${i})"
-                 onmousedown="startJobPress(${i})" onmouseup="endJobPress('${j}', ${i})">
+                 ontouchstart="handleTouchStart(event, ${i}, 'job')" 
+                 ontouchmove="handleTouchMove(event)" 
+                 ontouchend="handleTouchEnd(event, '${j}', ${i}, 'job')">
                 <strong>${j}</strong>
                 <span>${selectedItems.size > 0 ? (selectedItems.has(i)?'✅':'⬜') : '❯'}</span>
             </div>
         `).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>';
     }
 
-    // 主頁長按與點擊邏輯
-    function startJobPress(i) {
+    // 明細列表
+    function renderDetailList() {
+        const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
+        document.getElementById('stats-detail-list').innerHTML = filtered.map(l => `
+            <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" 
+                 ontouchstart="handleTouchStart(event, ${l.idx}, 'log')" 
+                 ontouchmove="handleTouchMove(event)" 
+                 ontouchend="handleTouchEnd(event, '', ${l.idx}, 'log')">
+                <div>
+                    <strong>${l.date}</strong> ${l.tStart && l.tEnd ? `<small style="color:#666;">(${l.tStart}-${l.tEnd})</small>` : ''}<br>
+                    <small>${l.hrs}hr x HK$${l.rate}</small>
+                </div>
+                <div style="text-align:right;">
+                    <strong>HK$${l.pay.toFixed(1)}</strong>
+                    <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'✎'}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 觸控開始 (紀錄起點座標)
+    function handleTouchStart(e, idx, type) {
+        isScrolling = false;
         isLongPress = false;
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+
         pressTimer = setTimeout(() => {
-            isLongPress = true;
-            if (selectedItems.size === 0) {
-                editJobName(i); // 長按編輯工作名稱
-            } else {
-                toggleSelect(i);
+            if (!isScrolling) {
+                isLongPress = true;
+                if (type === 'job') {
+                    if (selectedItems.size === 0) editJobName(idx);
+                    else toggleSelect(idx);
+                } else {
+                    toggleSelect(idx);
+                }
             }
         }, 600);
     }
 
-    function endJobPress(name, i) {
+    // 觸控移動 (如果有滑動，取消點擊與長按)
+    function handleTouchMove(e) {
+        const touch = e.touches[0];
+        const moveX = Math.abs(touch.clientX - startX);
+        const moveY = Math.abs(touch.clientY - startY);
+
+        // 手指移動超過 10 像素，判定為滑動/滾動頁面
+        if (moveX > 10 || moveY > 10) {
+            isScrolling = true;
+            clearTimeout(pressTimer); // 立即取消長按計時
+        }
+    }
+
+    // 觸控結束
+    function handleTouchEnd(e, jobName, idx, type) {
         clearTimeout(pressTimer);
-        if (!isLongPress) {
-            if (selectedItems.size > 0) {
-                toggleSelect(i);
-            } else {
-                clickJob(name); // 單擊新增紀錄
-            }
+        // 如果剛才發生了滾動頁面，或是已經觸發了長按，則不執行單擊動作
+        if (isScrolling || isLongPress) return;
+
+        if (selectedItems.size > 0) {
+            toggleSelect(idx);
+        } else {
+            if (type === 'job') clickJob(jobName);
+            else editLog(idx);
         }
     }
 
@@ -185,36 +239,12 @@
         if (newName && newName.trim() !== "" && newName.trim() !== oldName) {
             const trimmed = newName.trim();
             jobs[index] = trimmed;
-            // 同步更新 log 中的工作名稱
             logs.forEach(l => {
                 if (l.job === oldName) l.job = trimmed;
             });
             localStorage.setItem('my_jobs_v6', JSON.stringify(jobs));
             localStorage.setItem('my_logs_v6', JSON.stringify(logs));
             renderJobs();
-        }
-    }
-
-    function handleLogClick(idx) {
-        if (selectedItems.size > 0) {
-            toggleSelect(idx);
-        } else {
-            editLog(idx); // 單擊直接編輯紀錄
-        }
-    }
-
-    function startLogPress(idx) {
-        isLongPress = false;
-        pressTimer = setTimeout(() => {
-            isLongPress = true;
-            toggleSelect(idx); // 長按進入多選模式
-        }, 600);
-    }
-
-    function endLogPress(idx) {
-        clearTimeout(pressTimer);
-        if (!isLongPress) {
-            handleLogClick(idx);
         }
     }
 
@@ -259,7 +289,6 @@
         else renderDetailList();
     }
 
-    // 二次提醒二次確認刪除
     function confirmBatchDelete() {
         const count = selectedItems.size;
         if (count === 0) return;
@@ -375,24 +404,6 @@
         cancelSelection();
         renderDetailList(); 
         showPage('stats-detail'); 
-    }
-
-    function renderDetailList() {
-        const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
-        document.getElementById('stats-detail-list').innerHTML = filtered.map(l => `
-            <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" 
-                 ontouchstart="startLogPress(${l.idx})" ontouchend="endLogPress(${l.idx})"
-                 onmousedown="startLogPress(${l.idx})" onmouseup="endLogPress(${l.idx})">
-                <div>
-                    <strong>${l.date}</strong> ${l.tStart && l.tEnd ? `<small style="color:#666;">(${l.tStart}-${l.tEnd})</small>` : ''}<br>
-                    <small>${l.hrs}hr x HK$${l.rate}</small>
-                </div>
-                <div style="text-align:right;">
-                    <strong>HK$${l.pay.toFixed(1)}</strong>
-                    <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'✎'}</span>
-                </div>
-            </div>
-        `).join('');
     }
 
     function editLog(i) { 
