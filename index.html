@@ -34,11 +34,10 @@
 </head>
 <body>
 
-    <!-- 頂部即時計算/刪除列 -->
     <div id="batch-delete-bar" class="batch-bar">
         <div class="flex-between">
             <div style="text-align: left;">
-                <div style="font-size:12px; opacity:0.9;">已選取 <span id="sel-count">0</span> 天</div>
+                <div style="font-size:12px; opacity:0.9;">已選取 <span id="sel-count">0</span> 項</div>
                 <strong id="calc-summary" style="font-size:15px;">總計: 0hr | HK$0</strong>
             </div>
             <div>
@@ -60,9 +59,8 @@
         <div id="job-list" style="margin-top:10px;"></div>
     </div>
 
-    <!-- 編輯/新增頁面 -->
     <div id="page-edit" class="page">
-        <div class="header"><button class="btn-ghost" onclick="showPage('home')">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
+        <div class="header"><button class="btn-ghost" onclick="closeEditPage()">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
         <div class="card">
             <label>日期</label><input type="date" id="work-date">
             
@@ -87,7 +85,6 @@
         </div>
     </div>
 
-    <!-- 統計頁面 -->
     <div id="page-stats" class="page">
         <div class="header"><h1>薪資統計</h1><div></div></div>
         <div class="card">
@@ -97,7 +94,6 @@
         <div id="stats-summary-list"></div>
     </div>
 
-    <!-- 明細頁面 -->
     <div id="page-stats-detail" class="page">
         <div class="header"><button class="btn-ghost" onclick="showPage('stats')">← 返回</button><h1 id="stats-detail-title">明細</h1><div style="width:50px;"></div></div>
         <div id="stats-detail-list"></div>
@@ -116,6 +112,8 @@
     let currentJob = "";
     let currentMonth = "";
     let editingIndex = -1;
+    let pressTimer = null;
+    let isLongPress = false;
 
     function showPage(pageId) {
         cancelSelection();
@@ -142,22 +140,81 @@
         }
     }
 
+    // 主頁工作列表
     function renderJobs() {
         currentMode = "job";
         const list = document.getElementById('job-list');
         list.innerHTML = jobs.map((j, i) => `
-            <div class="card flex-between ${selectedItems.has(i)?'selected':''}" onclick="handleItemClick('${j}', ${i})">
+            <div class="card flex-between ${selectedItems.has(i)?'selected':''}" 
+                 ontouchstart="startJobPress(${i})" ontouchend="endJobPress('${j}', ${i})"
+                 onmousedown="startJobPress(${i})" onmouseup="endJobPress('${j}', ${i})">
                 <strong>${j}</strong>
                 <span>${selectedItems.size > 0 ? (selectedItems.has(i)?'✅':'⬜') : '❯'}</span>
             </div>
         `).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>';
     }
 
-    function handleItemClick(name, i) {
-        if(selectedItems.size > 0 || currentMode === "log") {
-            toggleSelect(i);
+    // 主頁長按與點擊邏輯
+    function startJobPress(i) {
+        isLongPress = false;
+        pressTimer = setTimeout(() => {
+            isLongPress = true;
+            if (selectedItems.size === 0) {
+                editJobName(i); // 長按編輯工作名稱
+            } else {
+                toggleSelect(i);
+            }
+        }, 600);
+    }
+
+    function endJobPress(name, i) {
+        clearTimeout(pressTimer);
+        if (!isLongPress) {
+            if (selectedItems.size > 0) {
+                toggleSelect(i);
+            } else {
+                clickJob(name); // 單擊新增紀錄
+            }
+        }
+    }
+
+    // 編輯工作名稱
+    function editJobName(index) {
+        const oldName = jobs[index];
+        const newName = prompt("請輸入新的工作名稱：", oldName);
+        if (newName && newName.trim() !== "" && newName.trim() !== oldName) {
+            const trimmed = newName.trim();
+            jobs[index] = trimmed;
+            // 同步更新 log 中的工作名稱
+            logs.forEach(l => {
+                if (l.job === oldName) l.job = trimmed;
+            });
+            localStorage.setItem('my_jobs_v6', JSON.stringify(jobs));
+            localStorage.setItem('my_logs_v6', JSON.stringify(logs));
+            renderJobs();
+        }
+    }
+
+    function handleLogClick(idx) {
+        if (selectedItems.size > 0) {
+            toggleSelect(idx);
         } else {
-            clickJob(name);
+            editLog(idx); // 單擊直接編輯紀錄
+        }
+    }
+
+    function startLogPress(idx) {
+        isLongPress = false;
+        pressTimer = setTimeout(() => {
+            isLongPress = true;
+            toggleSelect(idx); // 長按進入多選模式
+        }, 600);
+    }
+
+    function endLogPress(idx) {
+        clearTimeout(pressTimer);
+        if (!isLongPress) {
+            handleLogClick(idx);
         }
     }
 
@@ -187,10 +244,8 @@
                     }
                 });
                 document.getElementById('calc-summary').innerText = `總計: ${totalHrs.toFixed(1)}hr | HK$${totalPay.toFixed(1)}`;
-                document.getElementById('btn-delete-action').style.display = 'inline-block';
             } else {
                 document.getElementById('calc-summary').innerText = `已選取 ${selectedItems.size} 個工作`;
-                document.getElementById('btn-delete-action').style.display = 'inline-block';
             }
         } else {
             bar.style.display = 'none';
@@ -204,10 +259,18 @@
         else renderDetailList();
     }
 
+    // 二次提醒二次確認刪除
     function confirmBatchDelete() {
         const count = selectedItems.size;
-        if(confirm(`確定刪除這 ${count} 個項目嗎？\n(注意：相關的所有紀錄也會被刪除)`)) {
-            if(currentMode === "job") {
+        if (count === 0) return;
+        
+        const isJobMode = currentMode === "job";
+        const msg = isJobMode 
+            ? `⚠️ 確定刪除這 ${count} 個工作嗎？\n (注意：屬於這些工作的歷史紀錄也會一併被刪除！)`
+            : `⚠️ 確定要刪除這 ${count} 筆紀錄嗎？\n (刪除後將無法復原)`;
+
+        if(confirm(msg)) {
+            if(isJobMode) {
                 const namesToDelete = Array.from(selectedItems).map(i => jobs[i]);
                 jobs = jobs.filter((_, i) => !selectedItems.has(i));
                 logs = logs.filter(l => !namesToDelete.includes(l.job));
@@ -221,7 +284,14 @@
         }
     }
 
-    function addNewJobName() { let n = prompt("輸入工作名稱:"); if(n) { jobs.push(n.trim()); localStorage.setItem('my_jobs_v6', JSON.stringify(jobs)); renderJobs(); } }
+    function addNewJobName() { 
+        let n = prompt("輸入工作名稱:"); 
+        if(n && n.trim()) { 
+            jobs.push(n.trim()); 
+            localStorage.setItem('my_jobs_v6', JSON.stringify(jobs)); 
+            renderJobs(); 
+        } 
+    }
     
     function clickJob(j) { 
         currentJob = j; 
@@ -232,6 +302,14 @@
         document.getElementById('time-end').value = "";
         document.getElementById('work-hours').value = ""; 
         showPage('edit'); 
+    }
+
+    function closeEditPage() {
+        if (editingIndex > -1) {
+            showPage('stats-detail');
+        } else {
+            showPage('home');
+        }
     }
 
     function saveRecord() {
@@ -245,9 +323,23 @@
         
         const rec = { job: currentJob, date: d, hrs: h, rate: r, pay: h*r, tStart: tStart, tEnd: tEnd };
         
-        if(editingIndex > -1) logs[editingIndex] = rec; else logs.push(rec);
+        if(editingIndex > -1) {
+            logs[editingIndex] = rec; 
+        } else {
+            logs.push(rec);
+        }
+        
         localStorage.setItem('my_logs_v6', JSON.stringify(logs));
-        if(editingIndex > -1) showPage('stats'); else { document.getElementById('work-hours').value = ""; document.getElementById('time-start').value = ""; document.getElementById('time-end').value = ""; alert("儲存成功"); }
+        
+        if(editingIndex > -1) {
+            showPage('stats-detail'); 
+        } else { 
+            document.getElementById('work-hours').value = ""; 
+            document.getElementById('time-start').value = ""; 
+            document.getElementById('time-end').value = ""; 
+            alert("儲存成功"); 
+            showPage('home');
+        }
     }
 
     function renderMonthlyStats() {
@@ -288,14 +380,16 @@
     function renderDetailList() {
         const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
         document.getElementById('stats-detail-list').innerHTML = filtered.map(l => `
-            <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" onclick="handleItemClick('', ${l.idx})">
+            <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" 
+                 ontouchstart="startLogPress(${l.idx})" ontouchend="endLogPress(${l.idx})"
+                 onmousedown="startLogPress(${l.idx})" onmouseup="endLogPress(${l.idx})">
                 <div>
                     <strong>${l.date}</strong> ${l.tStart && l.tEnd ? `<small style="color:#666;">(${l.tStart}-${l.tEnd})</small>` : ''}<br>
                     <small>${l.hrs}hr x HK$${l.rate}</small>
                 </div>
                 <div style="text-align:right;">
                     <strong>HK$${l.pay.toFixed(1)}</strong>
-                    <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'⬜'}</span>
+                    <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'✎'}</span>
                 </div>
             </div>
         `).join('');
