@@ -34,7 +34,6 @@
 </head>
 <body>
 
-    <!-- 頂部即時計算/刪除列 -->
     <div id="batch-delete-bar" class="batch-bar">
         <div class="flex-between">
             <div style="text-align: left;">
@@ -48,7 +47,6 @@
         </div>
     </div>
 
-    <!-- 主頁 -->
     <div id="page-home" class="page active">
         <div class="header">
             <h1>我的工作</h1>
@@ -61,7 +59,6 @@
         <div id="job-list" style="margin-top:10px;"></div>
     </div>
 
-    <!-- 編輯/新增頁面 -->
     <div id="page-edit" class="page">
         <div class="header"><button class="btn-ghost" onclick="closeEditPage()">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
         <div class="card">
@@ -69,12 +66,12 @@
             
             <div class="time-group">
                 <div>
-                    <label>開始時間 (24H)</label>
-                    <input type="time" id="time-start" onchange="autoCalculateHours()">
+                    <label>開始時間 (24小時制)</label>
+                    <input type="time" id="time-start" step="900" onchange="autoCalculateHours()">
                 </div>
                 <div>
-                    <label>結束時間 (24H)</label>
-                    <input type="time" id="time-end" onchange="autoCalculateHours()">
+                    <label>結束時間 (24小時制)</label>
+                    <input type="time" id="time-end" step="900" onchange="autoCalculateHours()">
                 </div>
             </div>
 
@@ -88,7 +85,6 @@
         </div>
     </div>
 
-    <!-- 統計頁面 -->
     <div id="page-stats" class="page">
         <div class="header"><h1>薪資統計</h1><div></div></div>
         <div class="card">
@@ -98,7 +94,6 @@
         <div id="stats-summary-list"></div>
     </div>
 
-    <!-- 明細頁面 -->
     <div id="page-stats-detail" class="page">
         <div class="header"><button class="btn-ghost" onclick="showPage('stats')">← 返回</button><h1 id="stats-detail-title">明細</h1><div style="width:50px;"></div></div>
         <div id="stats-detail-list"></div>
@@ -123,6 +118,18 @@
     let isLongPress = false;
     let startX = 0, startY = 0;
     let isScrolling = false;
+
+    // 強制將時間字串轉換為 24 小時制 (HH:MM) 格式
+    function formatTo24H(timeStr) {
+        if (!timeStr) return "";
+        const parts = timeStr.split(':');
+        if (parts.length >= 2) {
+            let hh = parseInt(parts[0], 10);
+            let mm = parseInt(parts[1], 10);
+            return `${hh < 10 ? '0' + hh : hh}:${mm < 10 ? '0' + mm : mm}`;
+        }
+        return timeStr;
+    }
 
     function showPage(pageId) {
         cancelSelection();
@@ -164,27 +171,31 @@
         `).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>';
     }
 
-    // 明細列表
+    // 明細列表 (一律以 24 小時制顯示)
     function renderDetailList() {
         const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
-        document.getElementById('stats-detail-list').innerHTML = filtered.map(l => `
-            <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" 
-                 ontouchstart="handleTouchStart(event, ${l.idx}, 'log')" 
-                 ontouchmove="handleTouchMove(event)" 
-                 ontouchend="handleTouchEnd(event, '', ${l.idx}, 'log')">
-                <div>
-                    <strong>${l.date}</strong> ${l.tStart && l.tEnd ? `<small style="color:#666;">(${l.tStart}-${l.tEnd})</small>` : ''}<br>
-                    <small>${l.hrs}hr x HK$${l.rate}</small>
+        document.getElementById('stats-detail-list').innerHTML = filtered.map(l => {
+            const tStart24 = formatTo24H(l.tStart);
+            const tEnd24 = formatTo24H(l.tEnd);
+            return `
+                <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" 
+                     ontouchstart="handleTouchStart(event, ${l.idx}, 'log')" 
+                     ontouchmove="handleTouchMove(event)" 
+                     ontouchend="handleTouchEnd(event, '', ${l.idx}, 'log')">
+                    <div>
+                        <strong>${l.date}</strong> ${tStart24 && tEnd24 ? `<small style="color:#666;">(${tStart24}-${tEnd24})</small>` : ''}<br>
+                        <small>${l.hrs}hr x HK$${l.rate}</small>
+                    </div>
+                    <div style="text-align:right;">
+                        <strong>HK$${l.pay.toFixed(1)}</strong>
+                        <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'✎'}</span>
+                    </div>
                 </div>
-                <div style="text-align:right;">
-                    <strong>HK$${l.pay.toFixed(1)}</strong>
-                    <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'✎'}</span>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
-    // 觸控開始 (紀錄起點座標)
+    // 觸控開始
     function handleTouchStart(e, idx, type) {
         isScrolling = false;
         isLongPress = false;
@@ -205,23 +216,21 @@
         }, 600);
     }
 
-    // 觸控移動 (如果有滑動，取消點擊與長按)
+    // 觸控移動
     function handleTouchMove(e) {
         const touch = e.touches[0];
         const moveX = Math.abs(touch.clientX - startX);
         const moveY = Math.abs(touch.clientY - startY);
 
-        // 手指移動超過 10 像素，判定為滑動/滾動頁面
         if (moveX > 10 || moveY > 10) {
             isScrolling = true;
-            clearTimeout(pressTimer); // 立即取消長按計時
+            clearTimeout(pressTimer);
         }
     }
 
     // 觸控結束
     function handleTouchEnd(e, jobName, idx, type) {
         clearTimeout(pressTimer);
-        // 如果剛才發生了滾動頁面，或是已經觸發了長按，則不執行單擊動作
         if (isScrolling || isLongPress) return;
 
         if (selectedItems.size > 0) {
@@ -345,8 +354,8 @@
         const d = document.getElementById('work-date').value;
         const h = parseFloat(document.getElementById('work-hours').value);
         const r = parseFloat(document.getElementById('work-rate').value);
-        const tStart = document.getElementById('time-start').value;
-        const tEnd = document.getElementById('time-end').value;
+        const tStart = formatTo24H(document.getElementById('time-start').value);
+        const tEnd = formatTo24H(document.getElementById('time-end').value);
 
         if(!d || isNaN(h) || isNaN(r)) return alert("請先選擇「開始時間」與「結束時間」，並輸入「時薪」");
         
@@ -412,8 +421,8 @@
         currentJob = l.job; 
         document.getElementById('edit-title').innerText = "編輯紀錄"; 
         document.getElementById('work-date').value = l.date; 
-        document.getElementById('time-start').value = l.tStart || "";
-        document.getElementById('time-end').value = l.tEnd || "";
+        document.getElementById('time-start').value = formatTo24H(l.tStart) || "";
+        document.getElementById('time-end').value = formatTo24H(l.tEnd) || "";
         document.getElementById('work-hours').value = l.hrs; 
         document.getElementById('work-rate').value = l.rate; 
         showPage('edit'); 
@@ -428,7 +437,7 @@
             grouped[m][l.job].push(l);
         });
         const months = Object.keys(grouped).sort().reverse();
-        let csv = "\ufeff月份/工作/日期,時間,時數,時薪,工資\n";
+        let csv = "\ufeff月份/工作/日期,時間(24H),時數,時薪,工資\n";
         months.forEach(m => {
             csv += `【 ${m}月紀錄 】,,,, \n`; 
             let mPay = 0;
@@ -436,7 +445,7 @@
                 csv += `[ 工作: ${job} ],,,, \n`; 
                 let jHrs = 0, jPay = 0;
                 grouped[m][job].sort((a,b) => a.date.localeCompare(b.date)).forEach(l => {
-                    let timeStr = (l.tStart && l.tEnd) ? `${l.tStart}-${l.tEnd}` : "-";
+                    let timeStr = (l.tStart && l.tEnd) ? `${formatTo24H(l.tStart)}-${formatTo24H(l.tEnd)}` : "-";
                     csv += `${l.date},${timeStr},${l.hrs},HK$${l.rate},HK$${l.pay.toFixed(1)}\n`;
                     jHrs += l.hrs; jPay += l.pay;
                 });
