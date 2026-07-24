@@ -70,11 +70,11 @@
             <div class="time-group">
                 <div>
                     <label>開始時間 (24H)</label>
-                    <input type="time" id="time-start" step="900" onchange="autoCalculateHours()">
+                    <input type="time" id="time-start" step="900" onchange="snapTo15Mins(this); autoCalculateHours();">
                 </div>
                 <div>
                     <label>結束時間 (24H)</label>
-                    <input type="time" id="time-end" step="900" onchange="autoCalculateHours()">
+                    <input type="time" id="time-end" step="900" onchange="snapTo15Mins(this); autoCalculateHours();">
                 </div>
             </div>
 
@@ -123,6 +123,25 @@
     let isLongPress = false;
     let startX = 0, startY = 0;
     let isScrolling = false;
+
+    // 強制將輸入的分鐘數四捨五入調整為 00, 15, 30, 45
+    function snapTo15Mins(inputElem) {
+        if (!inputElem.value) return;
+        const parts = inputElem.value.split(':');
+        let h = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10);
+
+        // 四捨五入至最近的 15 分鐘
+        m = Math.round(m / 15) * 15;
+        if (m === 60) {
+            m = 0;
+            h = (h + 1) % 24;
+        }
+
+        const hh = h < 10 ? '0' + h : '' + h;
+        const mm = m < 10 ? '0' + m : '' + m;
+        inputElem.value = `${hh}:${mm}`;
+    }
 
     function showPage(pageId) {
         cancelSelection();
@@ -211,15 +230,17 @@
         const moveX = Math.abs(touch.clientX - startX);
         const moveY = Math.abs(touch.clientY - startY);
 
+        // 手指移動超過 10 像素，判定為滑動/滾動頁面
         if (moveX > 10 || moveY > 10) {
             isScrolling = true;
-            clearTimeout(pressTimer);
+            clearTimeout(pressTimer); // 立即取消長按計時
         }
     }
 
     // 觸控結束
     function handleTouchEnd(e, jobName, idx, type) {
         clearTimeout(pressTimer);
+        // 如果剛才發生了滾動頁面，或是已經觸發了長按，則不執行單擊動作
         if (isScrolling || isLongPress) return;
 
         if (selectedItems.size > 0) {
