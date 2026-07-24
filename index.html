@@ -70,7 +70,7 @@
             <label style="font-weight:bold;">日期</label>
             <input type="date" id="work-date" style="text-align:left;">
             
-            <!-- 開始時間 -->
+            <!-- 開始時間 (上午/下午 + 時 + 分00,15,30,45) -->
             <div class="time-group">
                 <label>開始時間</label>
                 <div class="time-select-pair">
@@ -84,7 +84,7 @@
                 </div>
             </div>
 
-            <!-- 結束時間 -->
+            <!-- 結束時間 (上午/下午 + 時 + 分00,15,30,45) -->
             <div class="time-group">
                 <label>結束時間</label>
                 <div class="time-select-pair">
@@ -144,7 +144,7 @@
     let startX = 0, startY = 0;
     let isScrolling = false;
 
-    // 初始化 12 小時 (1-12) 與 15 分鐘選單
+    // 初始化 12 小時 (1-12) 與 15 分鐘 (00, 15, 30, 45) 選單
     function initTimeSelectors() {
         let hOptions = '<option value="">時</option>';
         for (let h = 1; h <= 12; h++) {
@@ -172,7 +172,7 @@
         if(pageId === 'stats') renderMonthlyStats();
     }
 
-    // 將 AM/PM + 12小時制 轉換為 24小時制數字方便計算
+    // 將 AM/PM + 12小時制 轉換為 24小時制數字以計算工時
     function parseTo24Hour(ampm, hourStr, minStr) {
         if (!hourStr || !minStr) return null;
         let h = parseInt(hourStr, 10);
@@ -198,7 +198,7 @@
         
         if (startHrs !== null && endHrs !== null) {
             let diff = endHrs - startHrs;
-            if (diff <= 0) diff += 24; // 跨夜情況
+            if (diff <= 0) diff += 24; // 處理跨夜情況
             document.getElementById('work-hours').value = diff.toFixed(2);
         } else {
             document.getElementById('work-hours').value = "";
@@ -240,7 +240,7 @@
         `).join('');
     }
 
-    // 觸控邏輯
+    // 觸控開始 (紀錄起點座標)
     function handleTouchStart(e, idx, type) {
         isScrolling = false;
         isLongPress = false;
@@ -261,6 +261,7 @@
         }, 600);
     }
 
+    // 觸控移動 (如果有滑動，取消點擊與長按)
     function handleTouchMove(e) {
         const touch = e.touches[0];
         const moveX = Math.abs(touch.clientX - startX);
@@ -272,6 +273,7 @@
         }
     }
 
+    // 觸控結束
     function handleTouchEnd(e, jobName, idx, type) {
         clearTimeout(pressTimer);
         if (isScrolling || isLongPress) return;
@@ -284,6 +286,7 @@
         }
     }
 
+    // 編輯工作名稱
     function editJobName(index) {
         const oldName = jobs[index];
         const newName = prompt("請輸入新的工作名稱：", oldName);
@@ -302,7 +305,9 @@
     function toggleSelect(i) {
         if(selectedItems.has(i)) selectedItems.delete(i);
         else selectedItems.add(i);
+        
         updateBatchBar();
+        
         if(currentMode === "job") renderJobs();
         else renderDetailList();
     }
@@ -387,8 +392,11 @@
     }
 
     function closeEditPage() {
-        if (editingIndex > -1) showPage('stats-detail');
-        else showPage('home');
+        if (editingIndex > -1) {
+            showPage('stats-detail');
+        } else {
+            showPage('home');
+        }
     }
 
     function saveRecord() {
@@ -410,8 +418,11 @@
         const tEnd = `${eAMPM === 'AM' ? '上午' : '下午'}${eH}:${eM}`;
         const rec = { job: currentJob, date: d, hrs: h, rate: r, pay: h*r, tStart: tStart, tEnd: tEnd, sAMPM, sH, sM, eAMPM, eH, eM };
         
-        if(editingIndex > -1) logs[editingIndex] = rec; 
-        else logs.push(rec);
+        if(editingIndex > -1) {
+            logs[editingIndex] = rec; 
+        } else {
+            logs.push(rec);
+        }
         
         localStorage.setItem('my_logs_v6', JSON.stringify(logs));
         
