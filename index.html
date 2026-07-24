@@ -28,7 +28,9 @@
         #bg-input { display: none; }
         .batch-bar { display: none; background: var(--primary); color: white; padding: 12px 15px; text-align: center; position: fixed; top: 0; width: 100%; z-index: 100; font-size: 14px; box-sizing: border-box; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
         .export-btn { background: white; color: #333; border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-top: 10px; width: 100%; font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .time-group { display: flex; gap: 10px; }
+        .time-select-pair { display: flex; gap: 6px; align-items: center; }
+        .time-select-pair select { text-align: center; font-weight: bold; }
+        .time-group { display: flex; gap: 12px; }
         .time-group div { flex: 1; }
     </style>
 </head>
@@ -70,15 +72,23 @@
             <div class="time-group">
                 <div>
                     <label>開始時間 (24H)</label>
-                    <select id="time-start" onchange="autoCalculateHours()"></select>
+                    <div class="time-select-pair">
+                        <select id="start-hour" onchange="autoCalculateHours()"></select>
+                        <span>:</span>
+                        <select id="start-min" onchange="autoCalculateHours()"></select>
+                    </div>
                 </div>
                 <div>
                     <label>結束時間 (24H)</label>
-                    <select id="time-end" onchange="autoCalculateHours()"></select>
+                    <div class="time-select-pair">
+                        <select id="end-hour" onchange="autoCalculateHours()"></select>
+                        <span>:</span>
+                        <select id="end-min" onchange="autoCalculateHours()"></select>
+                    </div>
                 </div>
             </div>
 
-            <label>總工時 (自動計算)</label>
+            <label style="margin-top:10px; display:block;">總工時 (自動計算)</label>
             <input type="number" id="work-hours" step="0.01" readonly placeholder="請選擇上下班時間">
             
             <label>時薪 (HK$)</label>
@@ -124,22 +134,22 @@
     let startX = 0, startY = 0;
     let isScrolling = false;
 
-    // 初始化 24 小時制下拉選單 (每15分鐘一個選項)
-    function initTimeDropdowns() {
-        const startSelect = document.getElementById('time-start');
-        const endSelect = document.getElementById('time-end');
-        let optionsHtml = '<option value="">請選擇時間</option>';
-        
+    // 初始化 24 小時與 15 分鐘分離選單
+    function initTimeSelectors() {
+        let hOptions = '<option value="">時</option>';
         for (let h = 0; h < 24; h++) {
-            for (let m = 0; m < 60; m += 15) {
-                const hh = h < 10 ? '0' + h : h;
-                const mm = m < 10 ? '0' + m : m;
-                const timeVal = `${hh}:${mm}`;
-                optionsHtml += `<option value="${timeVal}">${timeVal}</option>`;
-            }
+            const hh = h < 10 ? '0' + h : '' + h;
+            hOptions += `<option value="${hh}">${hh}</option>`;
         }
-        startSelect.innerHTML = optionsHtml;
-        endSelect.innerHTML = optionsHtml;
+        document.getElementById('start-hour').innerHTML = hOptions;
+        document.getElementById('end-hour').innerHTML = hOptions;
+
+        let mOptions = '<option value="">分</option>';
+        ['00', '15', '30', '45'].forEach(mm => {
+            mOptions += `<option value="${mm}">${mm}</option>`;
+        });
+        document.getElementById('start-min').innerHTML = mOptions;
+        document.getElementById('end-min').innerHTML = mOptions;
     }
 
     function showPage(pageId) {
@@ -153,10 +163,14 @@
     }
 
     function autoCalculateHours() {
-        const startVal = document.getElementById('time-start').value;
-        const endVal = document.getElementById('time-end').value;
+        const sh = document.getElementById('start-hour').value;
+        const sm = document.getElementById('start-min').value;
+        const eh = document.getElementById('end-hour').value;
+        const em = document.getElementById('end-min').value;
         
-        if (startVal && endVal) {
+        if (sh !== "" && sm !== "" && eh !== "" && em !== "") {
+            const startVal = `${sh}:${sm}`;
+            const endVal = `${eh}:${em}`;
             const start = new Date(`1970-01-01T${startVal}:00`);
             let end = new Date(`1970-01-01T${endVal}:00`);
             if (end <= start) end.setDate(end.getDate() + 1);
@@ -338,8 +352,10 @@
         editingIndex = -1; 
         document.getElementById('edit-title').innerText = "新增: "+j; 
         document.getElementById('work-date').valueAsDate = new Date(); 
-        document.getElementById('time-start').value = "";
-        document.getElementById('time-end').value = "";
+        document.getElementById('start-hour').value = "";
+        document.getElementById('start-min').value = "";
+        document.getElementById('end-hour').value = "";
+        document.getElementById('end-min').value = "";
         document.getElementById('work-hours').value = ""; 
         showPage('edit'); 
     }
@@ -353,11 +369,15 @@
         const d = document.getElementById('work-date').value;
         const h = parseFloat(document.getElementById('work-hours').value);
         const r = parseFloat(document.getElementById('work-rate').value);
-        const tStart = document.getElementById('time-start').value;
-        const tEnd = document.getElementById('time-end').value;
+        const sh = document.getElementById('start-hour').value;
+        const sm = document.getElementById('start-min').value;
+        const eh = document.getElementById('end-hour').value;
+        const em = document.getElementById('end-min').value;
 
-        if(!d || isNaN(h) || isNaN(r)) return alert("請先選擇「開始時間」與「結束時間」，並輸入「時薪」");
+        if(!d || isNaN(h) || isNaN(r)) return alert("請完整選擇「開始時間」與「結束時間」，並輸入「時薪」");
         
+        const tStart = `${sh}:${sm}`;
+        const tEnd = `${eh}:${em}`;
         const rec = { job: currentJob, date: d, hrs: h, rate: r, pay: h*r, tStart: tStart, tEnd: tEnd };
         
         if(editingIndex > -1) logs[editingIndex] = rec; 
@@ -369,8 +389,10 @@
             showPage('stats-detail'); 
         } else { 
             document.getElementById('work-hours').value = ""; 
-            document.getElementById('time-start').value = ""; 
-            document.getElementById('time-end').value = ""; 
+            document.getElementById('start-hour').value = ""; 
+            document.getElementById('start-min').value = ""; 
+            document.getElementById('end-hour').value = ""; 
+            document.getElementById('end-min').value = ""; 
             alert("儲存成功"); 
             showPage('home');
         }
@@ -417,8 +439,18 @@
         currentJob = l.job; 
         document.getElementById('edit-title').innerText = "編輯紀錄"; 
         document.getElementById('work-date').value = l.date; 
-        document.getElementById('time-start').value = l.tStart || "";
-        document.getElementById('time-end').value = l.tEnd || "";
+        
+        if (l.tStart) {
+            const [sh, sm] = l.tStart.split(':');
+            document.getElementById('start-hour').value = sh || "";
+            document.getElementById('start-min').value = sm || "";
+        }
+        if (l.tEnd) {
+            const [eh, em] = l.tEnd.split(':');
+            document.getElementById('end-hour').value = eh || "";
+            document.getElementById('end-min').value = em || "";
+        }
+
         document.getElementById('work-hours').value = l.hrs; 
         document.getElementById('work-rate').value = l.rate; 
         showPage('edit'); 
@@ -463,7 +495,7 @@
     function changeBg(i) { if(i.files[0]) { const r = new FileReader(); r.onload = e => { localStorage.setItem('user_bg', e.target.result); document.body.style.backgroundImage = `url(${e.target.result})`; }; r.readAsDataURL(i.files[0]); } }
     
     window.oncontextmenu = e => { if(e.target.closest('.card')) e.preventDefault(); };
-    initTimeDropdowns();
+    initTimeSelectors();
     loadBg(); 
     renderJobs();
 </script>
