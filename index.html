@@ -23,7 +23,7 @@
         .tab-bar { position: fixed; bottom: 0; width: 100%; height: 85px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); display: flex; border-top: 1px solid rgba(0,0,0,0.1); padding-bottom: 15px; }
         .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8E8E93; background: none; border: none; font-size: 11px; }
         .tab-item.active { color: var(--primary); }
-        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-sizing: border-box; background: white; font-size: 16px; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-sizing: border-box; background: white; font-size: 16px; -webkit-appearance: none; }
         input[readonly] { background: #e9e9ee; color: #555; }
         #bg-input { display: none; }
         .batch-bar { display: none; background: var(--primary); color: white; padding: 12px 15px; text-align: center; position: fixed; top: 0; width: 100%; z-index: 100; font-size: 14px; box-sizing: border-box; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
@@ -34,6 +34,7 @@
 </head>
 <body>
 
+    <!-- 頂部即時計算/刪除列 -->
     <div id="batch-delete-bar" class="batch-bar">
         <div class="flex-between">
             <div style="text-align: left;">
@@ -47,6 +48,7 @@
         </div>
     </div>
 
+    <!-- 主頁 -->
     <div id="page-home" class="page active">
         <div class="header">
             <h1>我的工作</h1>
@@ -59,6 +61,7 @@
         <div id="job-list" style="margin-top:10px;"></div>
     </div>
 
+    <!-- 編輯/新增頁面 -->
     <div id="page-edit" class="page">
         <div class="header"><button class="btn-ghost" onclick="closeEditPage()">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
         <div class="card">
@@ -66,12 +69,12 @@
             
             <div class="time-group">
                 <div>
-                    <label>開始時間 (24小時制)</label>
-                    <input type="time" id="time-start" step="900" onchange="autoCalculateHours()">
+                    <label>開始時間 (24H)</label>
+                    <select id="time-start" onchange="autoCalculateHours()"></select>
                 </div>
                 <div>
-                    <label>結束時間 (24小時制)</label>
-                    <input type="time" id="time-end" step="900" onchange="autoCalculateHours()">
+                    <label>結束時間 (24H)</label>
+                    <select id="time-end" onchange="autoCalculateHours()"></select>
                 </div>
             </div>
 
@@ -85,6 +88,7 @@
         </div>
     </div>
 
+    <!-- 統計頁面 -->
     <div id="page-stats" class="page">
         <div class="header"><h1>薪資統計</h1><div></div></div>
         <div class="card">
@@ -94,6 +98,7 @@
         <div id="stats-summary-list"></div>
     </div>
 
+    <!-- 明細頁面 -->
     <div id="page-stats-detail" class="page">
         <div class="header"><button class="btn-ghost" onclick="showPage('stats')">← 返回</button><h1 id="stats-detail-title">明細</h1><div style="width:50px;"></div></div>
         <div id="stats-detail-list"></div>
@@ -119,16 +124,22 @@
     let startX = 0, startY = 0;
     let isScrolling = false;
 
-    // 強制將時間字串轉換為 24 小時制 (HH:MM) 格式
-    function formatTo24H(timeStr) {
-        if (!timeStr) return "";
-        const parts = timeStr.split(':');
-        if (parts.length >= 2) {
-            let hh = parseInt(parts[0], 10);
-            let mm = parseInt(parts[1], 10);
-            return `${hh < 10 ? '0' + hh : hh}:${mm < 10 ? '0' + mm : mm}`;
+    // 初始化 24 小時制下拉選單 (每15分鐘一個選項)
+    function initTimeDropdowns() {
+        const startSelect = document.getElementById('time-start');
+        const endSelect = document.getElementById('time-end');
+        let optionsHtml = '<option value="">請選擇時間</option>';
+        
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 15) {
+                const hh = h < 10 ? '0' + h : h;
+                const mm = m < 10 ? '0' + m : m;
+                const timeVal = `${hh}:${mm}`;
+                optionsHtml += `<option value="${timeVal}">${timeVal}</option>`;
+            }
         }
-        return timeStr;
+        startSelect.innerHTML = optionsHtml;
+        endSelect.innerHTML = optionsHtml;
     }
 
     function showPage(pageId) {
@@ -171,31 +182,27 @@
         `).join('') || '<p style="text-align:center;color:#666;">按 + 新增工作</p>';
     }
 
-    // 明細列表 (一律以 24 小時制顯示)
+    // 明細列表
     function renderDetailList() {
         const filtered = logs.map((l, i) => ({...l, idx: i})).filter(l => l.date.startsWith(currentMonth) && l.job === currentJob).sort((a,b) => a.date.localeCompare(b.date));
-        document.getElementById('stats-detail-list').innerHTML = filtered.map(l => {
-            const tStart24 = formatTo24H(l.tStart);
-            const tEnd24 = formatTo24H(l.tEnd);
-            return `
-                <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" 
-                     ontouchstart="handleTouchStart(event, ${l.idx}, 'log')" 
-                     ontouchmove="handleTouchMove(event)" 
-                     ontouchend="handleTouchEnd(event, '', ${l.idx}, 'log')">
-                    <div>
-                        <strong>${l.date}</strong> ${tStart24 && tEnd24 ? `<small style="color:#666;">(${tStart24}-${tEnd24})</small>` : ''}<br>
-                        <small>${l.hrs}hr x HK$${l.rate}</small>
-                    </div>
-                    <div style="text-align:right;">
-                        <strong>HK$${l.pay.toFixed(1)}</strong>
-                        <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'✎'}</span>
-                    </div>
+        document.getElementById('stats-detail-list').innerHTML = filtered.map(l => `
+            <div class="card flex-between ${selectedItems.has(l.idx)?'selected':''}" 
+                 ontouchstart="handleTouchStart(event, ${l.idx}, 'log')" 
+                 ontouchmove="handleTouchMove(event)" 
+                 ontouchend="handleTouchEnd(event, '', ${l.idx}, 'log')">
+                <div>
+                    <strong>${l.date}</strong> ${l.tStart && l.tEnd ? `<small style="color:#666;">(${l.tStart}-${l.tEnd})</small>` : ''}<br>
+                    <small>${l.hrs}hr x HK$${l.rate}</small>
                 </div>
-            `;
-        }).join('');
+                <div style="text-align:right;">
+                    <strong>HK$${l.pay.toFixed(1)}</strong>
+                    <span style="margin-left:8px;">${selectedItems.has(l.idx)?'✅':'✎'}</span>
+                </div>
+            </div>
+        `).join('');
     }
 
-    // 觸控開始
+    // 觸控邏輯
     function handleTouchStart(e, idx, type) {
         isScrolling = false;
         isLongPress = false;
@@ -216,7 +223,6 @@
         }, 600);
     }
 
-    // 觸控移動
     function handleTouchMove(e) {
         const touch = e.touches[0];
         const moveX = Math.abs(touch.clientX - startX);
@@ -228,7 +234,6 @@
         }
     }
 
-    // 觸控結束
     function handleTouchEnd(e, jobName, idx, type) {
         clearTimeout(pressTimer);
         if (isScrolling || isLongPress) return;
@@ -241,7 +246,6 @@
         }
     }
 
-    // 編輯工作名稱
     function editJobName(index) {
         const oldName = jobs[index];
         const newName = prompt("請輸入新的工作名稱：", oldName);
@@ -260,9 +264,7 @@
     function toggleSelect(i) {
         if(selectedItems.has(i)) selectedItems.delete(i);
         else selectedItems.add(i);
-        
         updateBatchBar();
-        
         if(currentMode === "job") renderJobs();
         else renderDetailList();
     }
@@ -343,29 +345,23 @@
     }
 
     function closeEditPage() {
-        if (editingIndex > -1) {
-            showPage('stats-detail');
-        } else {
-            showPage('home');
-        }
+        if (editingIndex > -1) showPage('stats-detail');
+        else showPage('home');
     }
 
     function saveRecord() {
         const d = document.getElementById('work-date').value;
         const h = parseFloat(document.getElementById('work-hours').value);
         const r = parseFloat(document.getElementById('work-rate').value);
-        const tStart = formatTo24H(document.getElementById('time-start').value);
-        const tEnd = formatTo24H(document.getElementById('time-end').value);
+        const tStart = document.getElementById('time-start').value;
+        const tEnd = document.getElementById('time-end').value;
 
         if(!d || isNaN(h) || isNaN(r)) return alert("請先選擇「開始時間」與「結束時間」，並輸入「時薪」");
         
         const rec = { job: currentJob, date: d, hrs: h, rate: r, pay: h*r, tStart: tStart, tEnd: tEnd };
         
-        if(editingIndex > -1) {
-            logs[editingIndex] = rec; 
-        } else {
-            logs.push(rec);
-        }
+        if(editingIndex > -1) logs[editingIndex] = rec; 
+        else logs.push(rec);
         
         localStorage.setItem('my_logs_v6', JSON.stringify(logs));
         
@@ -421,8 +417,8 @@
         currentJob = l.job; 
         document.getElementById('edit-title').innerText = "編輯紀錄"; 
         document.getElementById('work-date').value = l.date; 
-        document.getElementById('time-start').value = formatTo24H(l.tStart) || "";
-        document.getElementById('time-end').value = formatTo24H(l.tEnd) || "";
+        document.getElementById('time-start').value = l.tStart || "";
+        document.getElementById('time-end').value = l.tEnd || "";
         document.getElementById('work-hours').value = l.hrs; 
         document.getElementById('work-rate').value = l.rate; 
         showPage('edit'); 
@@ -445,7 +441,7 @@
                 csv += `[ 工作: ${job} ],,,, \n`; 
                 let jHrs = 0, jPay = 0;
                 grouped[m][job].sort((a,b) => a.date.localeCompare(b.date)).forEach(l => {
-                    let timeStr = (l.tStart && l.tEnd) ? `${formatTo24H(l.tStart)}-${formatTo24H(l.tEnd)}` : "-";
+                    let timeStr = (l.tStart && l.tEnd) ? `${l.tStart}-${l.tEnd}` : "-";
                     csv += `${l.date},${timeStr},${l.hrs},HK$${l.rate},HK$${l.pay.toFixed(1)}\n`;
                     jHrs += l.hrs; jPay += l.pay;
                 });
@@ -467,7 +463,9 @@
     function changeBg(i) { if(i.files[0]) { const r = new FileReader(); r.onload = e => { localStorage.setItem('user_bg', e.target.result); document.body.style.backgroundImage = `url(${e.target.result})`; }; r.readAsDataURL(i.files[0]); } }
     
     window.oncontextmenu = e => { if(e.target.closest('.card')) e.preventDefault(); };
-    loadBg(); renderJobs();
+    initTimeDropdowns();
+    loadBg(); 
+    renderJobs();
 </script>
 </body>
 </html>
