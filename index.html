@@ -34,6 +34,7 @@
 </head>
 <body>
 
+    <!-- 頂部即時計算/刪除列 -->
     <div id="batch-delete-bar" class="batch-bar">
         <div class="flex-between">
             <div style="text-align: left;">
@@ -47,6 +48,7 @@
         </div>
     </div>
 
+    <!-- 主頁 -->
     <div id="page-home" class="page active">
         <div class="header">
             <h1>我的工作</h1>
@@ -59,6 +61,7 @@
         <div id="job-list" style="margin-top:10px;"></div>
     </div>
 
+    <!-- 編輯/新增頁面 -->
     <div id="page-edit" class="page">
         <div class="header"><button class="btn-ghost" onclick="closeEditPage()">✕ 關閉</button><h1 id="edit-title">紀錄</h1><div style="width:50px;"></div></div>
         <div class="card">
@@ -66,12 +69,12 @@
             
             <div class="time-group">
                 <div>
-                    <label>開始時間 (24H)</label>
-                    <input type="time" id="time-start" step="900" onchange="snapTo15Mins(this); autoCalculateHours();">
+                    <label>開始時間</label>
+                    <input type="time" id="time-start" step="900" onchange="setDefaultMinutes(this); autoCalculateHours();">
                 </div>
                 <div>
-                    <label>結束時間 (24H)</label>
-                    <input type="time" id="time-end" step="900" onchange="snapTo15Mins(this); autoCalculateHours();">
+                    <label>結束時間</label>
+                    <input type="time" id="time-end" step="900" onchange="setDefaultMinutes(this); autoCalculateHours();">
                 </div>
             </div>
 
@@ -85,6 +88,7 @@
         </div>
     </div>
 
+    <!-- 統計頁面 -->
     <div id="page-stats" class="page">
         <div class="header"><h1>薪資統計</h1><div></div></div>
         <div class="card">
@@ -94,6 +98,7 @@
         <div id="stats-summary-list"></div>
     </div>
 
+    <!-- 明細頁面 -->
     <div id="page-stats-detail" class="page">
         <div class="header"><button class="btn-ghost" onclick="showPage('stats')">← 返回</button><h1 id="stats-detail-title">明細</h1><div style="width:50px;"></div></div>
         <div id="stats-detail-list"></div>
@@ -119,25 +124,26 @@
     let startX = 0, startY = 0;
     let isScrolling = false;
 
-    // 強制將輸入的分鐘數四捨五入調整為 00, 15, 30, 45；若只選擇了小時則自動補上 00 分
-    function snapTo15Mins(inputElem) {
+    // 保留選擇的小時，將「分」強制設為 00，其他 15 分鐘倍數則保留
+    function setDefaultMinutes(inputElem) {
         if (!inputElem.value) return;
         const parts = inputElem.value.split(':');
-        let h = parseInt(parts[0], 10);
-        let m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+        let h = parts[0];
+        let m = parseInt(parts[1], 10);
 
-        if (isNaN(m)) m = 0;
-
-        // 四捨五入至最近的 15 分鐘
-        m = Math.round(m / 15) * 15;
-        if (m === 60) {
+        if (isNaN(m)) {
             m = 0;
-            h = (h + 1) % 24;
+        } else {
+            // 自動四捨五入至最接近的 15 分鐘；如不需四捨五入，直接設 m = 0 即可
+            m = Math.round(m / 15) * 15;
+            if (m === 60) {
+                m = 0;
+                h = String((parseInt(h, 10) + 1) % 24).padStart(2, '0');
+            }
         }
 
-        const hh = h < 10 ? '0' + h : '' + h;
-        const mm = m < 10 ? '0' + m : '' + m;
-        inputElem.value = `${hh}:${mm}`;
+        const mm = String(m).padStart(2, '0');
+        inputElem.value = `${h}:${mm}`;
     }
 
     function showPage(pageId) {
@@ -230,7 +236,7 @@
         // 手指移動超過 10 像素，判定為滑動/滾動頁面
         if (moveX > 10 || moveY > 10) {
             isScrolling = true;
-            clearTimeout(pressTimer); // 立即取消長按計時
+            clearTimeout(pressTimer); // 讀取長按計時
         }
     }
 
@@ -343,9 +349,9 @@
         editingIndex = -1; 
         document.getElementById('edit-title').innerText = "新增: "+j; 
         document.getElementById('work-date').valueAsDate = new Date(); 
-        document.getElementById('time-start').value = "09:00";
-        document.getElementById('time-end').value = "18:00";
-        autoCalculateHours();
+        document.getElementById('time-start').value = "";
+        document.getElementById('time-end').value = "";
+        document.getElementById('work-hours').value = ""; 
         showPage('edit'); 
     }
 
