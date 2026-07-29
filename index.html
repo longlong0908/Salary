@@ -152,14 +152,14 @@
     let startX = 0, startY = 0;
     let isScrolling = false;
 
-    // 初始化 12 小時制下拉選單 (預設選項為「時」)
+    // 初始化 12 小時制下拉選單 (只顯示 01 - 12，不帶「時」字)
     function initHourSelects() {
         const startH = document.getElementById('start-h');
         const endH = document.getElementById('end-h');
         let options = '<option value="">時</option>';
         for(let i = 1; i <= 12; i++) {
             let val = String(i).padStart(2, '0');
-            options += `<option value="${val}">${val}時</option>`;
+            options += `<option value="${val}">${val}</option>`;
         }
         startH.innerHTML = options;
         endH.innerHTML = options;
@@ -171,7 +171,7 @@
         const hVal = document.getElementById(`${type}-h`).value;
         const mVal = document.getElementById(`${type}-m`).value;
         
-        if (!hVal) return ""; // 若小時選擇「時」(即未選)，不計算
+        if (!hVal) return ""; // 若未選擇小時，不計算
         
         let h = parseInt(hVal, 10);
         if (ampm === "PM" && h < 12) h += 12;
@@ -185,7 +185,7 @@
     function setTimeValue(type, timeStr) {
         if (!timeStr || !timeStr.includes(':')) {
             document.getElementById(`${type}-ampm`).value = (type === 'start') ? "AM" : "PM";
-            document.getElementById(`${type}-h`).value = ""; // 小時預設為「時」
+            document.getElementById(`${type}-h`).value = ""; // 小時預設為未選
             document.getElementById(`${type}-m`).value = "00"; // 分鐘預設為「00」
             return;
         }
