@@ -23,13 +23,17 @@
         .tab-bar { position: fixed; bottom: 0; width: 100%; height: 85px; background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); display: flex; border-top: 1px solid rgba(0,0,0,0.1); padding-bottom: 15px; }
         .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8E8E93; background: none; border: none; font-size: 11px; }
         .tab-item.active { color: var(--primary); }
-        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-sizing: border-box; background: white; font-size: 16px; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-sizing: border-box; background: white; font-size: 16px; }
         input[readonly] { background: #e9e9ee; color: #555; }
         #bg-input { display: none; }
         .batch-bar { display: none; background: var(--primary); color: white; padding: 12px 15px; text-align: center; position: fixed; top: 0; width: 100%; z-index: 100; font-size: 14px; box-sizing: border-box; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
         .export-btn { background: white; color: #333; border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-top: 10px; width: 100%; font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .time-group { display: flex; gap: 10px; }
-        .time-group div { flex: 1; }
+        .time-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+        .select-trio { display: flex; gap: 4px; }
+        .select-trio select { font-size: 14px; padding: 10px 2px; text-align: center; }
+        .select-trio select.ampm { flex: 1.2; }
+        .select-trio select.hour { flex: 1; }
+        .select-trio select.min { flex: 1; }
     </style>
 </head>
 <body>
@@ -70,11 +74,35 @@
             <div class="time-group">
                 <div>
                     <label>開始時間</label>
-                    <input type="time" id="time-start" step="900" onchange="setDefaultMinutes(this); autoCalculateHours();">
+                    <div class="select-trio">
+                        <select id="start-ampm" class="ampm" onchange="autoCalculateHours()">
+                            <option value="AM">上午</option>
+                            <option value="PM">下午</option>
+                        </select>
+                        <select id="start-h" class="hour" onchange="autoCalculateHours()"></select>
+                        <select id="start-m" class="min" onchange="autoCalculateHours()">
+                            <option value="00">00</option>
+                            <option value="15">15</option>
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                        </select>
+                    </div>
                 </div>
                 <div>
                     <label>結束時間</label>
-                    <input type="time" id="time-end" step="900" onchange="setDefaultMinutes(this); autoCalculateHours();">
+                    <div class="select-trio">
+                        <select id="end-ampm" class="ampm" onchange="autoCalculateHours()">
+                            <option value="AM">上午</option>
+                            <option value="PM" selected>下午</option>
+                        </select>
+                        <select id="end-h" class="hour" onchange="autoCalculateHours()"></select>
+                        <select id="end-m" class="min" onchange="autoCalculateHours()">
+                            <option value="00">00</option>
+                            <option value="15">15</option>
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -124,26 +152,62 @@
     let startX = 0, startY = 0;
     let isScrolling = false;
 
-    // 保留選擇的小時，將「分」強制設為 00，其他 15 分鐘倍數則保留
-    function setDefaultMinutes(inputElem) {
-        if (!inputElem.value) return;
-        const parts = inputElem.value.split(':');
-        let h = parts[0];
-        let m = parseInt(parts[1], 10);
-
-        if (isNaN(m)) {
-            m = 0;
-        } else {
-            // 自動四捨五入至最接近的 15 分鐘；如不需四捨五入，直接設 m = 0 即可
-            m = Math.round(m / 15) * 15;
-            if (m === 60) {
-                m = 0;
-                h = String((parseInt(h, 10) + 1) % 24).padStart(2, '0');
-            }
+    // 初始化 12 小時制下拉選單 (預設選項為「時」)
+    function initHourSelects() {
+        const startH = document.getElementById('start-h');
+        const endH = document.getElementById('end-h');
+        let options = '<option value="">時</option>';
+        for(let i = 1; i <= 12; i++) {
+            let val = String(i).padStart(2, '0');
+            options += `<option value="${val}">${val}時</option>`;
         }
+        startH.innerHTML = options;
+        endH.innerHTML = options;
+    }
 
-        const mm = String(m).padStart(2, '0');
-        inputElem.value = `${h}:${mm}`;
+    // 將 上午/下午 + 12小時制 轉成 24小時制 "HH:MM" 格式
+    function getTimeValue(type) {
+        const ampm = document.getElementById(`${type}-ampm`).value;
+        const hVal = document.getElementById(`${type}-h`).value;
+        const mVal = document.getElementById(`${type}-m`).value;
+        
+        if (!hVal) return ""; // 若小時選擇「時」(即未選)，不計算
+        
+        let h = parseInt(hVal, 10);
+        if (ampm === "PM" && h < 12) h += 12;
+        if (ampm === "AM" && h === 12) h = 0;
+        
+        const hh = String(h).padStart(2, '0');
+        return `${hh}:${mVal}`;
+    }
+
+    // 將 24小時制 "HH:MM" 轉換還原設定至下拉選單
+    function setTimeValue(type, timeStr) {
+        if (!timeStr || !timeStr.includes(':')) {
+            document.getElementById(`${type}-ampm`).value = (type === 'start') ? "AM" : "PM";
+            document.getElementById(`${type}-h`).value = ""; // 小時預設為「時」
+            document.getElementById(`${type}-m`).value = "00"; // 分鐘預設為「00」
+            return;
+        }
+        
+        const parts = timeStr.split(':');
+        let h = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10);
+        
+        let ampm = "AM";
+        if (h >= 12) {
+            ampm = "PM";
+            if (h > 12) h -= 12;
+        } else if (h === 0) {
+            h = 12;
+        }
+        
+        m = Math.round(m / 15) * 15;
+        if (m === 60) m = 0;
+
+        document.getElementById(`${type}-ampm`).value = ampm;
+        document.getElementById(`${type}-h`).value = String(h).padStart(2, '0');
+        document.getElementById(`${type}-m`).value = String(m).padStart(2, '0');
     }
 
     function showPage(pageId) {
@@ -157,8 +221,8 @@
     }
 
     function autoCalculateHours() {
-        const startVal = document.getElementById('time-start').value;
-        const endVal = document.getElementById('time-end').value;
+        const startVal = getTimeValue('start');
+        const endVal = getTimeValue('end');
         
         if (startVal && endVal) {
             const start = new Date(`1970-01-01T${startVal}:00`);
@@ -233,17 +297,15 @@
         const moveX = Math.abs(touch.clientX - startX);
         const moveY = Math.abs(touch.clientY - startY);
 
-        // 手指移動超過 10 像素，判定為滑動/滾動頁面
         if (moveX > 10 || moveY > 10) {
             isScrolling = true;
-            clearTimeout(pressTimer); // 讀取長按計時
+            clearTimeout(pressTimer);
         }
     }
 
     // 觸控結束
     function handleTouchEnd(e, jobName, idx, type) {
         clearTimeout(pressTimer);
-        // 如果剛才發生了滾動頁面，或是已經觸發了長按，則不執行單擊動作
         if (isScrolling || isLongPress) return;
 
         if (selectedItems.size > 0) {
@@ -349,9 +411,10 @@
         editingIndex = -1; 
         document.getElementById('edit-title').innerText = "新增: "+j; 
         document.getElementById('work-date').valueAsDate = new Date(); 
-        document.getElementById('time-start').value = "";
-        document.getElementById('time-end').value = "";
+        setTimeValue('start', '');
+        setTimeValue('end', '');
         document.getElementById('work-hours').value = ""; 
+        document.getElementById('work-rate').value = ""; 
         showPage('edit'); 
     }
 
@@ -367,8 +430,8 @@
         const d = document.getElementById('work-date').value;
         const h = parseFloat(document.getElementById('work-hours').value);
         const r = parseFloat(document.getElementById('work-rate').value);
-        const tStart = document.getElementById('time-start').value;
-        const tEnd = document.getElementById('time-end').value;
+        const tStart = getTimeValue('start');
+        const tEnd = getTimeValue('end');
 
         if(!d || isNaN(h) || isNaN(r)) return alert("請先選擇「開始時間」與「結束時間」，並輸入「時薪」");
         
@@ -386,8 +449,9 @@
             showPage('stats-detail'); 
         } else { 
             document.getElementById('work-hours').value = ""; 
-            document.getElementById('time-start').value = ""; 
-            document.getElementById('time-end').value = ""; 
+            document.getElementById('work-rate').value = ""; 
+            setTimeValue('start', ''); 
+            setTimeValue('end', ''); 
             alert("儲存成功"); 
             showPage('home');
         }
@@ -434,8 +498,8 @@
         currentJob = l.job; 
         document.getElementById('edit-title').innerText = "編輯紀錄"; 
         document.getElementById('work-date').value = l.date; 
-        document.getElementById('time-start').value = l.tStart || "";
-        document.getElementById('time-end').value = l.tEnd || "";
+        setTimeValue('start', l.tStart || "");
+        setTimeValue('end', l.tEnd || "");
         document.getElementById('work-hours').value = l.hrs; 
         document.getElementById('work-rate').value = l.rate; 
         showPage('edit'); 
@@ -480,6 +544,7 @@
     function changeBg(i) { if(i.files[0]) { const r = new FileReader(); r.onload = e => { localStorage.setItem('user_bg', e.target.result); document.body.style.backgroundImage = `url(${e.target.result})`; }; r.readAsDataURL(i.files[0]); } }
     
     window.oncontextmenu = e => { if(e.target.closest('.card')) e.preventDefault(); };
+    initHourSelects();
     loadBg(); renderJobs();
 </script>
 </body>
